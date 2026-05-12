@@ -1,0 +1,57 @@
+{
+  "nav": {
+    "create": "만들기",
+    "upload": "업로드",
+    "home": "홈",
+    "search": "검색",
+    "discover": "발견하기",
+    "playlists": "플레이리스트",
+    "chat": "채팅",
+    "profile": "프로필",
+    "admin": "관리자",
+    "signIn": "로그인",
+    "signUp": "회원가입",
+    "hidePlayer": "플레이어 숨기기",
+    "showPlayer": "플레이어 보기",
+    "privacyPolicy": "개인정보처리방침",
+    "termsAgreement": "이용약관",
+    "settings": "설정"
+  },
+  "home": {
+    "loading": "음악을 불러오는 중...",
+    "recentDrops": "최신 업로드",
+    "recentDropsSubtitle": "커뮤니티의 새 음악 — 스크롤하여 발견하세요",
+    "noRecentDrops": "아직 최신 업로드가 없습니다",
+    "noRecentDropsSubtitle": "첫 번째로 음악을 업로드하고 공유하세요",
+    "topAlbumChart": "인기 앨범 차트",
+    "topAlbumChartSubtitle": "앨범 — 클릭하여 업로드 순서대로 재생하세요.",
+    "openAlbum": "앨범 열기",
+    "tracks": "{{count}}곡",
+    "top10Charts": "TOP 10 차트",
+    "noTracksWithLikes": "아직 좋아요가 없습니다. 첫 번째로 좋아요를 눌러보세요!",
+    "recommendedForYou": "추천 음악",
+    "noTracksAvailable": "아직 트랙이 없습니다. 음악을 업로드해보세요!",
+    "recentlyPlayed": "최근 재생",
+    "played": "{{time}} 재생됨",
+    "popularTracks": "인기 트랙",
+    "noPopularTracks": "아직 인기 트랙이 없습니다. 음악을 재생해보세요!",
+    "trendingUsers": "인기 유저",
+    "nowPlaying": "지금 재생 중",
+    "paused": "일시정지"
+  },
+  "settings": {
+    "title": "설정",
+    "tabs": {
+      "account": "계정",
+      "security": "보안",
+      "notifications": "알림"
+    },
+    "language": {
+      "title": "언어",
+      "subtitle": "원하는 표시 언어를 선택하세요.",
+      "en": "English",
+      "ko": "한국어",
+      "ja": "日本語"
+    }
+  }
+}

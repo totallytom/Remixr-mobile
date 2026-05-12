@@ -1,0 +1,57 @@
+{
+  "nav": {
+    "create": "作成",
+    "upload": "アップロード",
+    "home": "ホーム",
+    "search": "検索",
+    "discover": "発見",
+    "playlists": "プレイリスト",
+    "chat": "チャット",
+    "profile": "プロフィール",
+    "admin": "管理者",
+    "signIn": "ログイン",
+    "signUp": "登録",
+    "hidePlayer": "プレイヤーを隠す",
+    "showPlayer": "プレイヤーを表示",
+    "privacyPolicy": "プライバシーポリシー",
+    "termsAgreement": "利用規約",
+    "settings": "設定"
+  },
+  "home": {
+    "loading": "音楽を読み込み中...",
+    "recentDrops": "最新アップロード",
+    "recentDropsSubtitle": "コミュニティからの新着音楽 — スクロールして発見",
+    "noRecentDrops": "まだ新着アップロードはありません",
+    "noRecentDropsSubtitle": "最初に音楽をアップロードして共有しましょう",
+    "topAlbumChart": "アルバムチャート",
+    "topAlbumChartSubtitle": "アルバム — クリックしてアップロード順に再生。",
+    "openAlbum": "アルバムを開く",
+    "tracks": "{{count}}曲",
+    "top10Charts": "TOP 10 チャート",
+    "noTracksWithLikes": "まだいいねがついたトラックはありません。最初にいいねしましょう！",
+    "recommendedForYou": "おすすめの音楽",
+    "noTracksAvailable": "まだトラックはありません。音楽をアップロードしてください！",
+    "recentlyPlayed": "最近再生した曲",
+    "played": "{{time}}に再生",
+    "popularTracks": "人気トラック",
+    "noPopularTracks": "まだ人気トラックはありません。音楽を再生してみましょう！",
+    "trendingUsers": "急上昇ユーザー",
+    "nowPlaying": "再生中",
+    "paused": "一時停止"
+  },
+  "settings": {
+    "title": "設定",
+    "tabs": {
+      "account": "アカウント",
+      "security": "セキュリティ",
+      "notifications": "通知"
+    },
+    "language": {
+      "title": "言語",
+      "subtitle": "表示言語を選択してください。",
+      "en": "English",
+      "ko": "한국어",
+      "ja": "日本語"
+    }
+  }
+}

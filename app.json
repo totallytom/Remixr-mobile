@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "sypher-mobile",
+    "slug": "remixr",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "sypher",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": false,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.sypher.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0a0a"
+      },
+      "package": "com.sypher.mobile"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "supabaseUrl": "https://hwmhookhaagcfkbzevko.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3bWhvb2toYWFnY2ZrYnpldmtvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgwOTcxNTUsImV4cCI6MjA2MzY3MzE1NX0.Ofai3I2gMEOfoAAwz6X7LldbrOwIBkDIm8_GxkXmxjs",
+      "eas": {
+        "projectId": "f98841a9-e868-4ab5-b17a-d5b86945d6b6"
+      }
+    },
+    "owner": "totallytom"
+  }
+}

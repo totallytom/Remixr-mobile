@@ -1,0 +1,57 @@
+{
+  "nav": {
+    "create": "Create",
+    "upload": "Upload",
+    "home": "Home",
+    "search": "Search",
+    "discover": "Discover",
+    "playlists": "Playlists",
+    "chat": "Chat",
+    "profile": "Profile",
+    "admin": "Admin",
+    "signIn": "Sign In",
+    "signUp": "Sign Up",
+    "hidePlayer": "Hide Player",
+    "showPlayer": "Show Player",
+    "privacyPolicy": "Privacy Policy",
+    "termsAgreement": "Terms & Agreement",
+    "settings": "Settings"
+  },
+  "home": {
+    "loading": "Loading your music...",
+    "recentDrops": "Recent Drops",
+    "recentDropsSubtitle": "Fresh uploads from the community — scroll to discover",
+    "noRecentDrops": "No recent drops yet",
+    "noRecentDropsSubtitle": "Be the first to upload and share your sound",
+    "topAlbumChart": "Top Album Chart",
+    "topAlbumChartSubtitle": "Albums — click to open and play tracks in upload order.",
+    "openAlbum": "Open album",
+    "tracks": "{{count}} tracks",
+    "top10Charts": "Top 10 Charts",
+    "noTracksWithLikes": "No tracks with likes yet. Be the first to like a track!",
+    "recommendedForYou": "Recommended for You",
+    "noTracksAvailable": "No tracks available yet. Upload some music to get started!",
+    "recentlyPlayed": "Recently Played",
+    "played": "Played {{time}}",
+    "popularTracks": "Popular Tracks",
+    "noPopularTracks": "No popular tracks yet. Start playing tracks to see them here!",
+    "trendingUsers": "Trending Users",
+    "nowPlaying": "Now Playing",
+    "paused": "Paused"
+  },
+  "settings": {
+    "title": "Settings",
+    "tabs": {
+      "account": "Account",
+      "security": "Security",
+      "notifications": "Notifications"
+    },
+    "language": {
+      "title": "Language",
+      "subtitle": "Choose your preferred display language.",
+      "en": "English",
+      "ko": "Korean (한국어)",
+      "ja": "Japanese (日本語)"
+    }
+  }
+}
