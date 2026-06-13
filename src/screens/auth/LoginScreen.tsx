@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { hap } from '../../utils/haptics';
 import {
   View,
   Text,
@@ -267,8 +268,10 @@ const LoginScreen: React.FC = () => {
                       )}
                     />
                     <TouchableOpacity
-                      onPress={() => setShowPassword(v => !v)}
+                      onPress={() => { hap.tap(); setShowPassword(v => !v); }}
                       style={styles.eyeButton}
+                      accessibilityRole="button"
+                      accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? (
                         <EyeOff size={20} color="#6b6b8a" />
@@ -283,8 +286,10 @@ const LoginScreen: React.FC = () => {
                     </Text>
                   )}
                   <TouchableOpacity
-                    onPress={() => setShowForgotPassword(true)}
+                    onPress={() => { hap.tap(); setShowForgotPassword(true); }}
                     style={styles.forgotLink}
+                    accessibilityRole="button"
+                    accessibilityLabel="Forgot your password"
                   >
                     <Text style={styles.linkText}>Forgot your password?</Text>
                   </TouchableOpacity>
@@ -316,9 +321,12 @@ const LoginScreen: React.FC = () => {
                     </Text>
                     <TouchableOpacity
                       onPress={() => {
+                        hap.tap();
                         setShowForgotPassword(false);
                         setResetEmailSent(false);
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Return to login"
                     >
                       <Text style={styles.linkText}>Return to login</Text>
                     </TouchableOpacity>
@@ -382,7 +390,9 @@ const LoginScreen: React.FC = () => {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.cancelButton}
-                        onPress={() => setShowForgotPassword(false)}
+                        onPress={() => { hap.tap(); setShowForgotPassword(false); }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Cancel"
                       >
                         <Text style={styles.cancelButtonText}>Cancel</Text>
                       </TouchableOpacity>
@@ -490,8 +500,10 @@ const LoginScreen: React.FC = () => {
                       )}
                     />
                     <TouchableOpacity
-                      onPress={() => setShowPassword(v => !v)}
+                      onPress={() => { hap.tap(); setShowPassword(v => !v); }}
                       style={styles.eyeButton}
+                      accessibilityRole="button"
+                      accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                     >
                       {showPassword ? (
                         <EyeOff size={20} color="#6b6b8a" />

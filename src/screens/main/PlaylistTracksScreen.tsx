@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -52,11 +53,14 @@ const PlaylistTracksPage: React.FC = () => {
   const [showAddTrackModal, setShowAddTrackModal] = useState(false);
   const [availableTracks, setAvailableTracks] = useState<any[]>([]);
   const [isLoadingTracks, setIsLoadingTracks] = useState(false);
+  const [addTrackSearch, setAddTrackSearch] = useState('');
+  const [recentlyAdded, setRecentlyAdded] = useState<Set<string>>(new Set());
 
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteSearchQuery, setInviteSearchQuery] = useState('');
   const [inviteSearchResults, setInviteSearchResults] = useState<any[]>([]);
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+  const [recentlyInvited, setRecentlyInvited] = useState<Set<string>>(new Set());
   const [pendingInvitations, setPendingInvitations] = useState<any[]>([]);
   const [hasAccess, setHasAccess] = useState(false);
   const [isCheckingAccess, setIsCheckingAccess] = useState(true);
@@ -157,22 +161,15 @@ const PlaylistTracksPage: React.FC = () => {
 
   const handleAddTrackToPlaylist = async (track: any) => {
     if (!playlist || !hasAccess) return;
-    if (playlist.tracks.find((t: any) => t.id === track.id)) {
-      Alert.alert('Duplicate', 'This track is already in the playlist');
-      return;
-    }
+    if (playlist.tracks.find((t: any) => t.id === track.id) || recentlyAdded.has(track.id)) return;
     try {
       await MusicService.addTrackToPlaylist(playlist.id, track.id);
+      setRecentlyAdded(prev => new Set(prev).add(track.id));
       const updated = await MusicService.getPlaylistById(playlist.id);
       setPlaylists(playlists.map(p => p.id === playlist.id ? updated : p));
-      setShowAddTrackModal(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      if (message.includes('duplicate key') || message.includes('unique constraint')) {
-        Alert.alert('Duplicate', 'Duplicated tracks!!');
-        setShowAddTrackModal(false);
-      } else {
-        console.error('Failed to add track to playlist:', error);
+      if (!message.includes('duplicate key') && !message.includes('unique constraint')) {
         Alert.alert('Error', `Failed to add track: ${message}`);
       }
     }
@@ -194,11 +191,10 @@ const PlaylistTracksPage: React.FC = () => {
 
   const handleInviteUser = async (inviteeId: string) => {
     if (!playlist || !user || !playlistId) return;
+    if (recentlyInvited.has(inviteeId)) return;
     try {
       await MusicService.inviteUserToPlaylist(playlistId, user.id, inviteeId);
-      Alert.alert('Success', 'Invitation sent successfully!');
-      setInviteSearchQuery('');
-      setInviteSearchResults([]);
+      setRecentlyInvited(prev => new Set(prev).add(inviteeId));
       if (isOwner) {
         const [collabs, pending] = await Promise.all([
           MusicService.getPlaylistCollaborators(playlistId),
@@ -208,7 +204,6 @@ const PlaylistTracksPage: React.FC = () => {
         setPendingInvitesSent(pending);
       }
     } catch (error) {
-      console.error('Failed to send invitation:', error);
       Alert.alert('Error', `Failed to send invitation: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
@@ -332,15 +327,18 @@ const PlaylistTracksPage: React.FC = () => {
 
   if ((isLoading || isCheckingAccess) && !playlist) {
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
       <View className="flex-1 bg-dark-900 items-center justify-center">
         <ActivityIndicator size="large" color="white" />
         <Text className="text-white mt-4">Loading playlist...</Text>
       </View>
+      </SafeAreaView>
     );
   }
 
   if (!playlist) {
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
       <View className="flex-1 bg-dark-900 items-center justify-center p-8">
         <Text className="text-white text-2xl font-bold mb-4">Playlist Not Found</Text>
         <TouchableOpacity
@@ -350,11 +348,13 @@ const PlaylistTracksPage: React.FC = () => {
           <Text className="text-white">Back to Playlists</Text>
         </TouchableOpacity>
       </View>
+      </SafeAreaView>
     );
   }
 
   if (!hasAccess && !isOwner) {
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
       <View className="flex-1 bg-dark-900 items-center justify-center p-8">
         <Text className="text-white text-2xl font-bold mb-4">Access Denied</Text>
         <Text className="text-gray-400 mb-4 text-center">You don't have access to this playlist.</Text>
@@ -386,19 +386,22 @@ const PlaylistTracksPage: React.FC = () => {
           <Text className="text-white">Back to Playlists</Text>
         </TouchableOpacity>
       </View>
+      </SafeAreaView>
     );
   }
 
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
     <View className="flex-1 bg-dark-900">
       <ScrollView contentContainerStyle={{ paddingBottom: 96 }}>
 
         {/* Hero Header */}
-        <View className="bg-violet-950/80 px-5 pt-10 pb-6">
-          <View className="items-center mb-5">
+        <View className="bg-violet-950/80 px-5 pt-5 pb-4">
+          <View className="flex-row items-center gap-4 mb-4">
+            {/* Cover — smaller so buttons aren't pushed off screen */}
             <TouchableOpacity
               onPress={() => isOwner && setShowCoverModal(true)}
-              className="w-44 h-44 rounded-xl overflow-hidden bg-dark-700"
+              className="w-24 h-24 rounded-xl overflow-hidden bg-dark-700 flex-shrink-0"
               disabled={!isOwner}
             >
               <Image
@@ -407,74 +410,75 @@ const PlaylistTracksPage: React.FC = () => {
                 accessibilityLabel="Playlist Cover"
               />
               {isOwner && (
-                <View className="absolute inset-0 bg-black/50 items-center justify-center gap-1">
-                  <Plus size={22} color="white" />
-                  <Text className="text-white text-xs font-medium">Change cover</Text>
+                <View className="absolute inset-0 bg-black/50 items-center justify-center gap-0.5">
+                  <Plus size={16} color="white" />
+                  <Text className="text-white text-[10px] font-medium">Change</Text>
                 </View>
               )}
             </TouchableOpacity>
+
+            {/* Title + meta */}
+            <View className="flex-1 min-w-0">
+              <Text className="text-xs uppercase tracking-widest text-violet-400 font-semibold mb-0.5">Playlist</Text>
+              <Text className="text-xl font-bold text-white" numberOfLines={2}>{playlist.name}</Text>
+              <View className="flex-row items-center gap-2 mt-1 flex-wrap">
+                <Text className="text-sm text-gray-400">
+                  {playlist.tracks.length} {playlist.tracks.length === 1 ? 'track' : 'tracks'}
+                </Text>
+                {!playlist.isPublic && (
+                  <View className="px-2 py-0.5 bg-violet-600/30 rounded-full border border-violet-600/40">
+                    <Text className="text-violet-300 text-xs">Private</Text>
+                  </View>
+                )}
+              </View>
+            </View>
           </View>
 
-          <View className="items-center">
-            <Text className="text-xs uppercase tracking-widest text-violet-400 font-semibold mb-1">Playlist</Text>
-            <Text className="text-3xl font-bold text-white text-center mb-2">{playlist.name}</Text>
-            <View className="flex-row items-center gap-2 mb-5 flex-wrap justify-center">
-              <Text className="text-sm text-gray-400">
-                {playlist.tracks.length} {playlist.tracks.length === 1 ? 'track' : 'tracks'}
-              </Text>
-              {!playlist.isPublic && (
-                <View className="px-2 py-0.5 bg-violet-600/30 rounded-full border border-violet-600/40">
-                  <Text className="text-violet-300 text-xs">Private</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Action Buttons */}
-            <View className="flex-row flex-wrap gap-2 justify-center">
+          {/* Action Buttons */}
+          <View className="flex-row flex-wrap gap-2">
+            <TouchableOpacity
+              onPress={handlePlayPlaylist}
+              disabled={playlist.tracks.length === 0}
+              className={`flex-row items-center gap-2 px-5 py-2.5 rounded-full ${playlist.tracks.length === 0 ? 'bg-violet-600/40' : 'bg-violet-600'}`}
+            >
+              <Play size={16} color="white" fill="white" />
+              <Text className="text-white font-semibold text-sm">Play</Text>
+            </TouchableOpacity>
+            {hasAccess && (
               <TouchableOpacity
-                onPress={handlePlayPlaylist}
-                disabled={playlist.tracks.length === 0}
-                className={`flex-row items-center gap-2 px-5 py-2.5 rounded-full ${playlist.tracks.length === 0 ? 'bg-violet-600/40' : 'bg-violet-600'}`}
+                onPress={() => { setShowAddTrackModal(true); loadAvailableTracks(); }}
+                className="flex-row items-center gap-2 px-4 py-2.5 bg-dark-700/80 rounded-full border border-dark-500/60"
               >
-                <Play size={16} color="white" fill="white" />
-                <Text className="text-white font-semibold text-sm">Play</Text>
+                <Plus size={15} color="white" />
+                <Text className="text-white text-sm">Add tracks</Text>
               </TouchableOpacity>
-              {hasAccess && (
+            )}
+            {isOwner && (
+              <>
                 <TouchableOpacity
-                  onPress={() => { setShowAddTrackModal(true); loadAvailableTracks(); }}
+                  onPress={() => setShowInviteModal(true)}
                   className="flex-row items-center gap-2 px-4 py-2.5 bg-dark-700/80 rounded-full border border-dark-500/60"
                 >
-                  <Plus size={15} color="white" />
-                  <Text className="text-white text-sm">Add tracks</Text>
+                  <UserPlus size={15} color="white" />
+                  <Text className="text-white text-sm">Invite</Text>
                 </TouchableOpacity>
-              )}
-              {isOwner && (
-                <>
-                  <TouchableOpacity
-                    onPress={() => setShowInviteModal(true)}
-                    className="flex-row items-center gap-2 px-4 py-2.5 bg-dark-700/80 rounded-full border border-dark-500/60"
-                  >
-                    <UserPlus size={15} color="white" />
-                    <Text className="text-white text-sm">Invite</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setShowCollaboratorsSection(!showCollaboratorsSection)}
-                    className={`flex-row items-center gap-2 px-4 py-2.5 rounded-full border ${
-                      showCollaboratorsSection
-                        ? 'bg-violet-600/30 border-violet-500/50'
-                        : 'bg-dark-700/80 border-dark-500/60'
-                    }`}
-                  >
-                    <Users size={15} color={showCollaboratorsSection ? '#c4b5fd' : 'white'} />
-                    <Text className={`text-sm ${showCollaboratorsSection ? 'text-violet-300' : 'text-white'}`}>
-                      {collaborators.length > 0
-                        ? `${collaborators.length} collaborator${collaborators.length !== 1 ? 's' : ''}`
-                        : 'Collaborators'}
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </View>
+                <TouchableOpacity
+                  onPress={() => setShowCollaboratorsSection(!showCollaboratorsSection)}
+                  className={`flex-row items-center gap-2 px-4 py-2.5 rounded-full border ${
+                    showCollaboratorsSection
+                      ? 'bg-violet-600/30 border-violet-500/50'
+                      : 'bg-dark-700/80 border-dark-500/60'
+                  }`}
+                >
+                  <Users size={15} color={showCollaboratorsSection ? '#c4b5fd' : 'white'} />
+                  <Text className={`text-sm ${showCollaboratorsSection ? 'text-violet-300' : 'text-white'}`}>
+                    {collaborators.length > 0
+                      ? `${collaborators.length} collaborator${collaborators.length !== 1 ? 's' : ''}`
+                      : 'Collaborators'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
 
@@ -646,66 +650,107 @@ const PlaylistTracksPage: React.FC = () => {
 
       </ScrollView>
 
-      {/* Add Track Modal */}
+      {/* Add Track Modal — Spotify style */}
       <Modal
         visible={showAddTrackModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowAddTrackModal(false)}
+        onRequestClose={() => { setShowAddTrackModal(false); setAddTrackSearch(''); setRecentlyAdded(new Set()); }}
       >
-        <View className="flex-1 bg-black/70 justify-end">
-          <View className="bg-dark-800 border border-dark-700/60 rounded-t-2xl" style={{ maxHeight: '85%' }}>
-            <View className="flex-row items-center justify-between px-5 py-4 border-b border-dark-700/60">
-              <Text className="text-base font-semibold text-white" numberOfLines={1}>
-                Add to "{playlist?.name}"
-              </Text>
-              <TouchableOpacity onPress={() => setShowAddTrackModal(false)} className="p-1.5 rounded-lg">
-                <X size={18} color="#6b7280" />
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#121212', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '88%' }}>
+
+            {/* Handle bar */}
+            <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 4 }}>
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+            </View>
+
+            {/* Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 }}>
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>Add to playlist</Text>
+              <TouchableOpacity
+                onPress={() => { setShowAddTrackModal(false); setAddTrackSearch(''); setRecentlyAdded(new Set()); }}
+                style={{ padding: 6 }}
+              >
+                <X size={22} color="rgba(255,255,255,0.6)" />
               </TouchableOpacity>
             </View>
-            <ScrollView className="flex-1 px-3 py-3">
-              {isLoadingTracks ? (
-                <View className="flex-row items-center justify-center py-12 gap-3">
-                  <ActivityIndicator size="small" color="#a78bfa" />
-                  <Text className="text-gray-400 text-sm">Loading tracks…</Text>
-                </View>
-              ) : availableTracks.filter(t => !playlist?.tracks.find((pt: any) => pt.id === t.id)).length === 0 ? (
-                <Text className="text-center text-gray-500 text-sm py-12">No tracks available to add.</Text>
-              ) : (
-                <View className="gap-1">
-                  {availableTracks
-                    .filter(t => !playlist?.tracks.find((pt: any) => pt.id === t.id))
-                    .map((track) => (
-                      <View key={track.id} className="flex-row items-center gap-3 px-3 py-2.5 rounded-lg">
+
+            {/* Search bar */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 12, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 8, paddingHorizontal: 12, height: 40 }}>
+              <Search size={16} color="rgba(255,255,255,0.5)" />
+              <TextInput
+                value={addTrackSearch}
+                onChangeText={setAddTrackSearch}
+                placeholder="Search songs or artists"
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                style={{ flex: 1, marginLeft: 8, color: '#fff', fontSize: 14 }}
+                autoCapitalize="none"
+              />
+              {addTrackSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setAddTrackSearch('')}>
+                  <X size={14} color="rgba(255,255,255,0.4)" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Track list */}
+            {isLoadingTracks ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                <ActivityIndicator size="large" color="#1DB954" />
+                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Loading tracks…</Text>
+              </View>
+            ) : (
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+                {availableTracks
+                  .filter(t => {
+                    const q = addTrackSearch.toLowerCase();
+                    return !q || t.title?.toLowerCase().includes(q) || t.artist?.toLowerCase().includes(q);
+                  })
+                  .map((track) => {
+                    const alreadyIn = !!(playlist?.tracks.find((pt: any) => pt.id === track.id)) || recentlyAdded.has(track.id);
+                    return (
+                      <View key={track.id} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, gap: 12 }}>
                         <Image
                           source={{ uri: track.cover }}
-                          className="w-10 h-10 rounded-md flex-shrink-0"
+                          style={{ width: 48, height: 48, borderRadius: 4, backgroundColor: '#1f2937', flexShrink: 0 }}
+                          resizeMode="cover"
                           accessibilityLabel={track.title}
                         />
-                        <View className="flex-1 min-w-0">
-                          <Text className="text-white text-sm font-medium" numberOfLines={1}>{track.title}</Text>
-                          <Text className="text-gray-500 text-xs" numberOfLines={1}>{track.artist}</Text>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={{ color: alreadyIn ? 'rgba(255,255,255,0.4)' : '#fff', fontSize: 14, fontWeight: '500' }} numberOfLines={1}>
+                            {track.title}
+                          </Text>
+                          <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+                            {track.artist}
+                          </Text>
                         </View>
-                        <Text className="text-gray-600 text-xs mr-1">{formatDuration(track.duration)}</Text>
-                        <TouchableOpacity
-                          onPress={() => handleAddTrackToPlaylist(track)}
-                          className="p-1.5 bg-violet-600 rounded-full flex-shrink-0"
-                        >
-                          <Plus size={14} color="white" />
-                        </TouchableOpacity>
+                        {alreadyIn ? (
+                          <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#1DB954', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Check size={14} color="#000" strokeWidth={3} />
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            onPress={() => handleAddTrackToPlaylist(track)}
+                            style={{ width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.4)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                            activeOpacity={0.7}
+                          >
+                            <Plus size={14} color="rgba(255,255,255,0.7)" strokeWidth={2.5} />
+                          </TouchableOpacity>
+                        )}
                       </View>
-                    ))}
-                </View>
-              )}
-            </ScrollView>
-            <View className="px-5 py-4 border-t border-dark-700/60">
-              <TouchableOpacity
-                onPress={() => setShowAddTrackModal(false)}
-                className="w-full py-2.5 bg-dark-700 rounded-xl items-center"
-              >
-                <Text className="text-white text-sm">Done</Text>
-              </TouchableOpacity>
-            </View>
+                    );
+                  })}
+                {availableTracks.filter(t => {
+                  const q = addTrackSearch.toLowerCase();
+                  return !q || t.title?.toLowerCase().includes(q) || t.artist?.toLowerCase().includes(q);
+                }).length === 0 && (
+                  <View style={{ alignItems: 'center', paddingTop: 48 }}>
+                    <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 14 }}>No results for "{addTrackSearch}"</Text>
+                  </View>
+                )}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -714,11 +759,11 @@ const PlaylistTracksPage: React.FC = () => {
       <Modal
         visible={showCoverModal}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setShowCoverModal(false)}
       >
-        <View className="flex-1 bg-black/70 justify-end">
-          <View className="bg-dark-800 border border-dark-700/60 rounded-t-2xl">
+        <View className="flex-1 bg-black/70 items-center justify-center px-4">
+          <View className="bg-dark-800 border border-dark-700/60 rounded-2xl w-full">
             <View className="flex-row items-center justify-between px-5 py-4 border-b border-dark-700/60">
               <Text className="text-base font-semibold text-white">Change cover</Text>
               <TouchableOpacity onPress={() => setShowCoverModal(false)} className="p-1.5 rounded-lg">
@@ -781,79 +826,123 @@ const PlaylistTracksPage: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Invite Modal */}
+      {/* Invite Modal — Spotify style */}
       <Modal
         visible={showInviteModal}
         transparent
         animationType="slide"
-        onRequestClose={() => { setShowInviteModal(false); setInviteSearchQuery(''); setInviteSearchResults([]); }}
+        onRequestClose={() => { setShowInviteModal(false); setInviteSearchQuery(''); setInviteSearchResults([]); setRecentlyInvited(new Set()); }}
       >
-        <View className="flex-1 bg-black/70 justify-end">
-          <View className="bg-dark-800 border border-dark-700/60 rounded-t-2xl" style={{ maxHeight: '70%' }}>
-            <View className="flex-row items-center justify-between px-5 py-4 border-b border-dark-700/60">
-              <Text className="text-base font-semibold text-white">Invite collaborators</Text>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#121212', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '88%' }}>
+
+            {/* Handle bar */}
+            <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 4 }}>
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+            </View>
+
+            {/* Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 }}>
+              <View>
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>Invite collaborators</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, marginTop: 2 }}>
+                  They can add and remove tracks
+                </Text>
+              </View>
               <TouchableOpacity
-                onPress={() => { setShowInviteModal(false); setInviteSearchQuery(''); setInviteSearchResults([]); }}
-                className="p-1.5 rounded-lg"
+                onPress={() => { setShowInviteModal(false); setInviteSearchQuery(''); setInviteSearchResults([]); setRecentlyInvited(new Set()); }}
+                style={{ padding: 6 }}
               >
-                <X size={18} color="#6b7280" />
+                <X size={22} color="rgba(255,255,255,0.6)" />
               </TouchableOpacity>
             </View>
-            <View className="p-4 flex-1">
-              <View className="flex-row items-center bg-dark-700 border border-dark-600 rounded-xl px-3 mb-3">
-                <Search size={16} color="#6b7280" />
-                <TextInput
-                  value={inviteSearchQuery}
-                  onChangeText={(v) => { setInviteSearchQuery(v); handleSearchUsers(v); }}
-                  placeholder="Search by username…"
-                  placeholderTextColor="#6b7280"
-                  className="flex-1 py-2.5 pl-2 text-white text-sm"
-                />
-              </View>
-              <ScrollView className="flex-1">
-                {isSearchingUsers ? (
-                  <View className="flex-row items-center justify-center py-8 gap-2">
-                    <ActivityIndicator size="small" color="#a78bfa" />
-                    <Text className="text-gray-400 text-sm">Searching…</Text>
-                  </View>
-                ) : inviteSearchResults.length === 0 ? (
-                  <Text className="text-center text-gray-500 text-sm py-8">
-                    {inviteSearchQuery ? 'No users found' : 'Search for users to invite'}
+
+            {/* Search bar */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 12, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 8, paddingHorizontal: 12, height: 40 }}>
+              <Search size={16} color="rgba(255,255,255,0.5)" />
+              <TextInput
+                value={inviteSearchQuery}
+                onChangeText={(v) => { setInviteSearchQuery(v); handleSearchUsers(v); }}
+                placeholder="Search by username"
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                style={{ flex: 1, marginLeft: 8, color: '#fff', fontSize: 14 }}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {inviteSearchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => { setInviteSearchQuery(''); setInviteSearchResults([]); }}>
+                  <X size={14} color="rgba(255,255,255,0.4)" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Results */}
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+              {isSearchingUsers ? (
+                <View style={{ flex: 1, alignItems: 'center', paddingTop: 48, gap: 10 }}>
+                  <ActivityIndicator size="large" color="#a78bfa" />
+                  <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>Searching…</Text>
+                </View>
+              ) : inviteSearchResults.length === 0 ? (
+                <View style={{ alignItems: 'center', paddingTop: 56 }}>
+                  <Users size={48} color="#374151" strokeWidth={1.5} />
+                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginTop: 16 }}>
+                    {inviteSearchQuery ? 'No users found' : 'Find people to collaborate'}
                   </Text>
-                ) : (
-                  <View className="gap-1">
-                    {inviteSearchResults.map((u: any) => (
-                      <View key={u.id} className="flex-row items-center justify-between gap-3 px-3 py-2.5 rounded-lg">
-                        <View className="flex-row items-center gap-3 flex-1 min-w-0">
-                          <Image
-                            source={{ uri: getAvatarUrl(u.avatar) }}
-                            className="w-9 h-9 rounded-full flex-shrink-0"
-                            accessibilityLabel={u.username}
-                          />
-                          <View className="flex-1 min-w-0">
-                            <Text className="text-white text-sm font-medium" numberOfLines={1}>{u.username}</Text>
-                            {u.artistName && (
-                              <Text className="text-gray-500 text-xs" numberOfLines={1}>{u.artistName}</Text>
-                            )}
-                          </View>
+                  <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginTop: 6, textAlign: 'center', paddingHorizontal: 32 }}>
+                    {inviteSearchQuery ? `No results for "${inviteSearchQuery}"` : 'Search for a username above'}
+                  </Text>
+                </View>
+              ) : (
+                inviteSearchResults.map((u: any) => {
+                  const isCollaborator = collaborators.some((c: any) => c.id === u.id);
+                  const invited = recentlyInvited.has(u.id) || pendingInvitesSent.some((p: any) => p.id === u.id);
+                  return (
+                    <View key={u.id} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 12 }}>
+                      <Image
+                        source={{ uri: getAvatarUrl(u.avatar) }}
+                        style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: '#1f2937', flexShrink: 0 }}
+                        accessibilityLabel={u.username}
+                      />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }} numberOfLines={1}>
+                          {u.username}
+                        </Text>
+                        {u.artistName ? (
+                          <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 1 }} numberOfLines={1}>
+                            {u.artistName}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {isCollaborator ? (
+                        <View style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}>
+                          <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '600' }}>Collaborator</Text>
                         </View>
+                      ) : invited ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(167,139,250,0.15)', borderWidth: 1, borderColor: 'rgba(167,139,250,0.3)' }}>
+                          <Check size={12} color="#a78bfa" strokeWidth={3} />
+                          <Text style={{ color: '#a78bfa', fontSize: 12, fontWeight: '600' }}>Invited</Text>
+                        </View>
+                      ) : (
                         <TouchableOpacity
                           onPress={() => handleInviteUser(u.id)}
-                          className="px-3 py-1.5 bg-violet-600 rounded-full flex-shrink-0"
+                          activeOpacity={0.7}
+                          style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: '#fff' }}
                         >
-                          <Text className="text-white text-xs font-medium">Invite</Text>
+                          <Text style={{ color: '#000', fontSize: 12, fontWeight: '700' }}>Invite</Text>
                         </TouchableOpacity>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </ScrollView>
-            </View>
+                      )}
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
 
     </View>
+    </SafeAreaView>
   );
 };
 

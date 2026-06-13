@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import PagerHeader from '../../components/layout/PagerHeader';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -322,7 +324,9 @@ const Search: React.FC = () => {
       : FILTER_CHIPS.filter((c) => c.id === 'venues');
 
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
     <View className="flex-1 bg-dark-900">
+      <PagerHeader />
       {/* Sticky header */}
       <View className="px-4 pt-4 pb-3 border-b border-dark-700/50 gap-3">
         <Text className="text-2xl font-bold text-white">Search</Text>
@@ -640,6 +644,7 @@ const Search: React.FC = () => {
         </View>
       </ScrollView>
     </View>
+    </SafeAreaView>
   );
 };
 

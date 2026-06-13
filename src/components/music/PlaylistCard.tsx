@@ -69,7 +69,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
   showActions = true,
   compact = false,
 }) => {
-  const { user, playPlaylist, playlists, setPlaylists, deletePlaylist } = useStore();
+  const { user, playQueue, playlists, setPlaylists, deletePlaylist } = useStore();
 
   const [showMenu, setShowMenu] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -87,7 +87,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
   // ── Play ──────────────────────────────────────────────────────────────────
   const handlePlay = () => {
     if (onPlay) onPlay(playlist);
-    else playPlaylist(playlist);
+    else playQueue(playlist.tracks);
   };
 
   // ── Edit ──────────────────────────────────────────────────────────────────
@@ -140,8 +140,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
-      <TouchableOpacity
-        activeOpacity={0.75}
+      <View
         className={`flex-row items-center gap-3 rounded-lg overflow-hidden p-3 border-l-4 border-l-violet-500 bg-violet-500/10 w-full${compact ? '' : ''}`}
       >
         {/* Cover */}
@@ -193,7 +192,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
             </TouchableOpacity>
           )}
         </View>
-      </TouchableOpacity>
+      </View>
 
       {/* ── Bottom-sheet options menu ── */}
       <Modal

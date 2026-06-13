@@ -1,13 +1,15 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import HomeScreen from '../../screens/main/HomeScreen';
+import HomePager from '../HomePager';
 import ArtistScreen from '../../screens/main/ArtistScreen';
 import AlbumTracksScreen from '../../screens/main/AlbumTracksScreen';
+import PlaylistTracksScreen from '../../screens/main/PlaylistTracksScreen';
 
 export type HomeStackParamList = {
-  Home: undefined;
+  HomePager: undefined;
   Artist: { artistId: string };
   AlbumTracks: { albumId: string };
+  PlaylistTracks: { playlistId: string };
 };
 
 const Stack = createNativeStackNavigator<HomeStackParamList>();
@@ -15,9 +17,10 @@ const Stack = createNativeStackNavigator<HomeStackParamList>();
 export default function HomeStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="HomePager" component={HomePager} />
       <Stack.Screen name="Artist" component={ArtistScreen} />
       <Stack.Screen name="AlbumTracks" component={AlbumTracksScreen} />
+      <Stack.Screen name="PlaylistTracks" component={PlaylistTracksScreen} />
     </Stack.Navigator>
   );
 }

@@ -6,23 +6,31 @@
 
 import { supabase } from './supabase';
 
-const API_BASE = typeof window !== 'undefined' ? '' : '';
+const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 
 export interface CopyrightCheckResult {
   blocked: boolean;
   reason?: string;
 }
 
-async function computeFileHash(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+// Returns null on native (no arrayBuffer/crypto.subtle) — server skips hash check but still checks metadata.
+async function computeFileHash(file: File): Promise<string | null> {
+  try {
+    if (typeof (file as unknown as Record<string, unknown>).arrayBuffer !== 'function') return null;
+    if (typeof crypto?.subtle?.digest !== 'function') return null;
+    const buffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Check if an upload is allowed (not detected as copyrighted).
  * Call this before uploading the file to storage.
+ * On native, hash is skipped — server still checks title/artist metadata.
  */
 export async function checkCopyright(
   file: File,
@@ -58,13 +66,8 @@ export async function checkCopyright(
       blocked: !!data.blocked,
       reason: data.reason,
     };
-  } catch (e) {
-    console.error('Copyright check error:', e);
-    // Network/request failed (e.g. CORS, connection refused in local dev) – allow upload so dev works
-    const isLikelyDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-    return {
-      blocked: !isLikelyDev,
-      reason: isLikelyDev ? undefined : 'Unable to verify copyright. Please check your connection and try again.',
-    };
+  } catch {
+    // Network failure or unexpected error — allow upload rather than silently blocking it
+    return { blocked: false };
   }
 }

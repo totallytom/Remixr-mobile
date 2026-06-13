@@ -15,6 +15,8 @@ import { proSubscriptionService } from '../../services/proSubscriptionService';
 import { PRICING } from '../../config/pricing';
 import type { ProfileStackParamList } from '../../navigation/stacks/ProfileStack';
 
+const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
+
 const FREE_FEATURES = [
   'Upload & share tracks (up to 10)',
   'Create albums (up to 2)',
@@ -127,7 +129,7 @@ export default function UpgradeScreen() {
 
       if (!customerId) {
         const res = await Promise.race([
-          fetch('/api/create-stripe-customer', {
+          fetch(`${API_BASE}/api/create-stripe-customer`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: user?.id, email: user?.email }),

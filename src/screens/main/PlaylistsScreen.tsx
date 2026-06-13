@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import PagerHeader from '../../components/layout/PagerHeader';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -18,8 +20,6 @@ import {
   Search,
   Music,
   Users,
-  Grid,
-  List,
   PlusCircle,
   ListMusic,
   Play,
@@ -45,13 +45,11 @@ const Playlists: React.FC = () => {
     deletePlaylist,
     addTrackToPlaylist,
     removeTrackFromPlaylist,
-    playPlaylist,
+    playQueue,
   } = useStore();
 
   const navigation = useNavigation<PlaylistsNavProp>();
-
   const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showAddTrackModal, setShowAddTrackModal] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
@@ -261,15 +259,20 @@ const Playlists: React.FC = () => {
 
   if (isLoading) {
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
       <View className="flex-1 items-center justify-center gap-4">
         <ActivityIndicator size="large" color="#7c3aed" />
         <Text className="text-gray-500">Loading playlists...</Text>
       </View>
+      </SafeAreaView>
     );
   }
 
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
     <View className="flex-1 bg-dark-900">
+
+      <PagerHeader />
 
       {/* Header */}
       <View className="px-5 pt-6 pb-4 flex-row items-center justify-between gap-4">
@@ -279,7 +282,7 @@ const Playlists: React.FC = () => {
         </View>
         <TouchableOpacity
           onPress={() => setShowCreateModal(true)}
-          className="flex-row items-center gap-2 px-4 py-2.5 bg-violet-600 rounded-full flex-shrink-0"
+          className="flex-row items-center gap-2 px-4 py-2.5 bg-violet-500 rounded-full flex-shrink-0"
         >
           <PlusCircle size={16} color="white" />
           <Text className="text-white text-sm font-semibold">New</Text>
@@ -297,20 +300,6 @@ const Playlists: React.FC = () => {
             placeholderTextColor="#6b7280"
             className="flex-1 py-2 pl-2 text-white text-sm"
           />
-        </View>
-        <View className="flex-row items-center gap-1 bg-dark-800 border border-dark-700/60 rounded-xl p-1">
-          <TouchableOpacity
-            onPress={() => setViewMode('list')}
-            className={`p-1.5 rounded-lg ${viewMode === 'list' ? 'bg-violet-600' : ''}`}
-          >
-            <List size={16} color={viewMode === 'list' ? 'white' : '#6b7280'} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setViewMode('grid')}
-            className={`p-1.5 rounded-lg ${viewMode === 'grid' ? 'bg-violet-600' : ''}`}
-          >
-            <Grid size={16} color={viewMode === 'grid' ? 'white' : '#6b7280'} />
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -373,7 +362,7 @@ const Playlists: React.FC = () => {
                   )}
                   <PlaylistCard
                     playlist={playlist}
-                    onPlay={playPlaylist}
+                    onPlay={(pl) => playQueue(pl.tracks)}
                     onEdit={() => {}}
                     onDelete={isShared && !isOwner ? undefined : handleDeletePlaylist}
                     onAddTrack={openAddTrackModal}
@@ -392,11 +381,11 @@ const Playlists: React.FC = () => {
       <Modal
         visible={showCreateModal}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setShowCreateModal(false)}
       >
-        <View className="flex-1 bg-black/70 justify-end">
-          <View className="bg-dark-800 border border-dark-700/60 rounded-t-2xl">
+        <View className="flex-1 bg-black/70 justify-center px-5">
+          <View className="bg-dark-800 border border-dark-700/60 rounded-2xl">
             <View className="flex-row items-center justify-between px-5 py-4 border-b border-dark-700/60">
               <Text className="text-base font-semibold text-white">New Playlist</Text>
               <TouchableOpacity onPress={() => setShowCreateModal(false)} className="p-1.5 rounded-lg">
@@ -428,7 +417,7 @@ const Playlists: React.FC = () => {
                 />
               </View>
             </View>
-            <View className="px-5 pb-8 flex-row gap-2">
+            <View className="px-5 pb-5 flex-row gap-2">
               <TouchableOpacity
                 onPress={handleCreatePlaylist}
                 disabled={isCreating || !createForm.name.trim()}
@@ -580,6 +569,7 @@ const Playlists: React.FC = () => {
       </Modal>
 
     </View>
+    </SafeAreaView>
   );
 };
 

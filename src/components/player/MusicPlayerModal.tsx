@@ -201,8 +201,8 @@ const MusicPlayerModal: React.FC<MusicPlayerModalProps> = ({ track, isOpen, onCl
   return (
     <Modal
       visible={isOpen}
-      transparent
       animationType="fade"
+      statusBarTranslucent
       onRequestClose={handleClose}
     >
       <TouchableOpacity
@@ -335,7 +335,7 @@ const styles = StyleSheet.create({
   // Modal
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: '#000',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,

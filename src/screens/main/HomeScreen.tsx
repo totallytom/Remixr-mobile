@@ -9,12 +9,12 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { MaterialTopTabNavigationProp } from '@react-navigation/material-top-tabs';
 import {
   Play,
   Clock,
-  TrendingUp,
   Zap,
   Star,
   Users,
@@ -25,7 +25,6 @@ import {
   Lock,
   CheckCircle,
   AlertCircle,
-  ThumbsUp,
   FolderOpen,
 } from 'lucide-react-native';
 import { useStore } from '../../store/useStore';
@@ -38,9 +37,11 @@ import type { Album } from '../../services/albumService';
 import { formatDistanceToNow } from 'date-fns';
 import { supabase } from '../../services/supabase';
 import { isMusicianRole } from '../../utils/userRole';
-import type { HomeStackParamList } from '../../navigation/stacks/HomeStack';
+import { proSubscriptionService } from '../../services/proSubscriptionService';
+import type { HomePagerParamList } from '../../navigation/HomePager';
+import PagerHeader from '../../components/layout/PagerHeader';
 
-type HomeNavProp = NativeStackNavigationProp<HomeStackParamList, 'Home'>;
+type HomeNavProp = MaterialTopTabNavigationProp<HomePagerParamList, 'HomeMain'>;
 
 const Home: React.FC = () => {
   const { playTrack, addToQueue, player, user } = useStore();
@@ -62,10 +63,10 @@ const Home: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [mostPlayedTracks, setMostPlayedTracks] = useState<{ track: Track; playCount: number }[]>([]);
   const [publicFeed, setPublicFeed] = useState<Track[]>([]);
-  const [topChartsTracks, setTopChartsTracks] = useState<{ track: Track; likes: number }[]>([]);
-  const [isLoadingTopCharts, setIsLoadingTopCharts] = useState(false);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [trendingUsers, setTrendingUsers] = useState<User[]>([]);
+  const [isManagingSubscription, setIsManagingSubscription] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
 
   // Load public data once on mount
   useEffect(() => {
@@ -78,17 +79,14 @@ const Home: React.FC = () => {
     const loadPublicData = async () => {
       try {
         setIsLoadingRecommendations(true);
-        setIsLoadingTopCharts(true);
 
         const [
           { data: recommendedData, error: recommendedError },
           { data: popularData, error: popularError },
-          { data: topChartsData, error: topChartsError },
           { data: publicData, error: publicErr },
         ] = await Promise.all([
           supabase.from('tracks').select('id, title, artist, album, cover, genre, audio_url, duration, price, created_at').limit(8).order('created_at', { ascending: false }),
           supabase.rpc('get_popular_tracks', { limit_count: 4 }),
-          supabase.from('tracks').select('id, title, artist, album, cover, genre, audio_url, duration, price, likes, liked_by').order('likes', { ascending: false, nullsFirst: false }).limit(10),
           supabase.from('tracks').select('id, title, artist, album, cover, genre, audio_url, duration, price, created_at').order('created_at', { ascending: false }).limit(12),
         ]);
 
@@ -118,26 +116,6 @@ const Home: React.FC = () => {
           })));
         }
 
-        if (topChartsError) {
-          console.warn('Top charts query failed:', topChartsError);
-          setTopChartsTracks([]);
-        } else {
-          setTopChartsTracks(
-            (topChartsData || [])
-              .map(t => ({
-                track: {
-                  id: t.id, title: t.title, artist: t.artist, album: t.album,
-                  duration: t.duration || 0, cover: t.cover, genre: t.genre,
-                  audioUrl: t.audio_url, price: t.price || 0, boosted: false,
-                },
-                likes: t.likes || 0,
-              }))
-              .filter(item => item.likes > 0)
-              .slice(0, 10)
-          );
-        }
-        setIsLoadingTopCharts(false);
-
         if (publicErr) {
           console.error('Public feed query failed:', publicErr);
         } else {
@@ -154,7 +132,6 @@ const Home: React.FC = () => {
         setPopularTracks([]);
       } finally {
         setIsLoadingRecommendations(false);
-        setIsLoadingTopCharts(false);
         setIsLoading(false);
       }
     };
@@ -258,36 +235,6 @@ const Home: React.FC = () => {
     loadAlbums();
   }, [user?.id]);
 
-  // Load trending users
-  useEffect(() => {
-    const loadTrendingUsers = async () => {
-      try {
-        const { data: users, error } = await supabase
-          .from('users')
-          .select('*')
-          .order('followers', { ascending: false })
-          .limit(3);
-
-        if (error) {
-          console.error('Error fetching trending users:', error);
-          setTrendingUsers([]);
-          return;
-        }
-
-        setTrendingUsers(users.map(u => ({
-          id: u.id, username: u.username, email: u.email, avatar: u.avatar,
-          followers: u.followers || 0, following: u.following || 0,
-          role: u.role || 'consumer', isVerified: u.is_verified || false,
-          isPrivate: u.is_private || false, artistName: u.artist_name || u.username,
-          bio: u.bio || '', genres: u.genres || [],
-        })));
-      } catch (err) {
-        console.error('Failed to load trending users:', err);
-        setTrendingUsers([]);
-      }
-    };
-    loadTrendingUsers();
-  }, []);
 
   const handlePlayTrack = (track: Track) => {
     playTrack(track);
@@ -303,6 +250,18 @@ const Home: React.FC = () => {
 
   const handleAddToQueue = (track: Track) => {
     addToQueue(track);
+  };
+
+  const handleManageSubscription = async () => {
+    setIsManagingSubscription(true);
+    setSubscriptionError(null);
+    try {
+      await proSubscriptionService.openPortal();
+    } catch (err) {
+      setSubscriptionError(err instanceof Error ? err.message : 'Could not open billing portal');
+    } finally {
+      setIsManagingSubscription(false);
+    }
   };
 
   const formatCardNumber = (value: string) => {
@@ -347,63 +306,98 @@ const Home: React.FC = () => {
 
   if (isLoading) {
     return (
-      <View className="flex-1 items-center justify-center">
-        <ActivityIndicator size="large" color="#7c3aed" />
-        <Text className="text-white text-sm mt-2">Loading...</Text>
-      </View>
+      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#7c3aed" />
+          <Text className="text-white text-sm mt-2">Loading...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 32 }}>
-      <View className="px-3 py-4 sm:px-5 sm:py-5 md:px-6 md:py-6 lg:px-8 space-y-6 sm:space-y-7 md:space-y-8 w-full min-w-0 box-border">
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
+    <ScrollView className="flex-1 bg-[#121212]" contentContainerStyle={{ paddingBottom: 32 }}>
 
-        {/* Logo header */}
-        <View className="flex-row items-center gap-3">
-          <Image
-            source={require('../../../assets/logo.png')}
-            style={{ width: 40, height: 40, borderRadius: 20 }}
-            resizeMode="cover"
-          />
-          <Text className="text-white text-2xl font-bold">Remixr</Text>
-        </View>
+       <PagerHeader />
 
-        {/* Pro banner — upgrade CTA for free users, status for pro users */}
-      {user && (
-        user.subscriptionTier === 'pro' ? (
-          <TouchableOpacity
-            activeOpacity={0.8}
-            className="w-full flex-row items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-yellow-500/40 bg-yellow-500/10"
-          >
-            <View className="flex-row items-center gap-3 flex-1 min-w-0">
-              <Star size={20} color="#eab308" fill="#eab308" />
-              <View className="flex-1 min-w-0">
-                <Text className="text-sm font-semibold text-yellow-400">Subscribed to Remixr Pro!</Text>
-                <Text className="text-xs text-white/40 mt-0.5" numberOfLines={1}>Unlimited uploads · Priority Discover · Analytics</Text>
+      <View className="px-3 py-4 w-full" style={{ gap: 32 }}>
+        {/* Subscription banner */}
+        {user && (
+          user.subscriptionTier === 'pro' ? (
+            <View>
+              <TouchableOpacity
+                onPress={handleManageSubscription}
+                disabled={isManagingSubscription}
+                activeOpacity={0.75}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                  gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16,
+                  backgroundColor: 'rgba(234,179,8,0.12)', borderWidth: 1, borderColor: 'rgba(234,179,8,0.4)',
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                  <Star size={20} color="#EAB308" fill="#EAB308" style={{ flexShrink: 0 }} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#EAB308', lineHeight: 18 }}>
+                      Subscribed to Remixr Pro!
+                    </Text>
+                    <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }} numberOfLines={1}>
+                      Unlimited uploads · Priority Discover · Analytics
+                    </Text>
+                  </View>
+                </View>
+                {isManagingSubscription ? (
+                  <ActivityIndicator size="small" color="#EAB308" style={{ flexShrink: 0 }} />
+                ) : (
+                  <View style={{
+                    flexShrink: 0, backgroundColor: 'rgba(234,179,8,0.2)', borderWidth: 1,
+                    borderColor: 'rgba(234,179,8,0.3)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
+                  }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#EAB308' }}>
+                      Manage subscription
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              {subscriptionError && (
+                <Text style={{ color: '#f87171', fontSize: 11, marginTop: 4, textAlign: 'center' }}>
+                  {subscriptionError}
+                </Text>
+              )}
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => (navigation as any).getParent()?.navigate('ProfileTab', { screen: 'Upgrade' })}
+              activeOpacity={0.75}
+              style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16,
+                backgroundColor: 'rgba(234,179,8,0.08)', borderWidth: 1, borderColor: 'rgba(234,179,8,0.3)',
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                <Star size={20} color="#EAB308" fill="#EAB308" style={{ flexShrink: 0 }} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '600', color: '#EAB308', lineHeight: 18 }}>
+                    Unlock Remixr Pro
+                  </Text>
+                  <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2 }} numberOfLines={1}>
+                    Unlimited uploads · Priority Discover · Analytics
+                  </Text>
+                </View>
               </View>
-            </View>
-            <View className="px-2.5 py-1 rounded-full bg-yellow-500/20 border border-yellow-500/30">
-              <Text className="text-xs font-bold text-yellow-400">Manage subscription</Text>
-            </View>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            activeOpacity={0.8}
-            className="w-full flex-row items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-yellow-500/30 bg-yellow-500/10"
-          >
-            <View className="flex-row items-center gap-3 flex-1 min-w-0">
-              <Star size={20} color="#eab308" />
-              <View className="flex-1 min-w-0">
-                <Text className="text-sm font-semibold text-yellow-400">Unlock Remixr Pro</Text>
-                <Text className="text-xs text-white/40 mt-0.5" numberOfLines={1}>Unlimited uploads · Priority Discover · Analytics</Text>
+              <View style={{
+                flexShrink: 0, backgroundColor: 'rgba(234,179,8,0.2)', borderWidth: 1,
+                borderColor: 'rgba(234,179,8,0.3)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4,
+              }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#EAB308' }}>
+                  Go Pro →
+                </Text>
               </View>
-            </View>
-            <View className="px-2.5 py-1 rounded-full bg-yellow-500/20 border border-yellow-500/30">
-              <Text className="text-xs font-bold text-yellow-400">Go Pro →</Text>
-            </View>
-          </TouchableOpacity>
-        )
-      )}
+            </TouchableOpacity>
+          )
+        )}
 
         {/* Now Playing hero */}
         {player.currentTrack && (
@@ -515,188 +509,146 @@ const Home: React.FC = () => {
           </View>
         )}
 
-        {/* Top 10 Charts */}
-        <View>
-          <View className="flex-row items-center justify-between mb-5">
-            <View className="flex-row items-center gap-3">
-              <TrendingUp size={24} color="#a78bfa" />
-              <Text className="text-2xl font-bold text-white">Top 10 Charts</Text>
-            </View>
-            {isLoadingTopCharts && <ActivityIndicator size="small" color="#a78bfa" />}
-          </View>
-          {topChartsTracks.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={{ flexDirection: 'row', gap: 12, paddingLeft: 4, paddingRight: 24 }}>
-                {topChartsTracks.map(({ track, likes }, index) => (
-                  <TouchableOpacity
-                    key={track.id}
-                    onPress={() => handlePlayTrack(track)}
-                    className="w-[155px] bg-dark-800 rounded-xl overflow-hidden"
-                  >
-                    <View>
-                      <Image
-                        source={{ uri: track.cover }}
-                        style={{ width: 155, height: 155 }}
-                        resizeMode="cover"
-                        accessibilityLabel={track.title}
-                      />
-                      <View
-                        className={`absolute top-2 left-2 w-8 h-8 rounded-full items-center justify-center ${
-                          index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-500' : 'bg-black/60'
-                        }`}
-                      >
-                        <Text className={`font-bold text-sm ${index < 3 ? 'text-black' : 'text-white'}`}>{index + 1}</Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => handlePlayTrack(track)}
-                        className="absolute bottom-2 right-2 p-2 rounded-full bg-primary-600"
-                      >
-                        <Play size={14} color="white" fill="white" />
-                      </TouchableOpacity>
-                    </View>
-                    <View className="p-3">
-                      <Text className="text-white font-semibold text-sm" numberOfLines={1}>{track.title}</Text>
-                      <Text className="text-gray-400 text-xs mt-0.5" numberOfLines={1}>{track.artist}</Text>
-                      <View className="flex-row items-center gap-1 mt-2">
-                        <ThumbsUp size={12} color="#a78bfa" fill="#a78bfa" />
-                        <Text className="text-xs text-white font-medium">{likes}</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-          ) : !isLoadingTopCharts ? (
-            <View className="bg-dark-800 rounded-xl p-6 items-center">
-              <Text className="text-gray-400 text-sm">No tracks with likes yet. Be the first to like a track!</Text>
-            </View>
-          ) : null}
-        </View>
-
         {/* Recommended Tracks */}
-        <View>
-          <View className="flex-row items-center justify-between mb-4 gap-2">
-            <Text className="text-xl font-bold text-white flex-1" numberOfLines={1}>Recommended for You</Text>
-            {isLoadingRecommendations && <ActivityIndicator size="small" color="#a78bfa" />}
-          </View>
-          {recommendedTracks.length === 0 && !isLoadingRecommendations ? (
-            <View className="bg-dark-800 rounded-xl p-6 items-center">
-              <Text className="text-gray-400 text-sm">No tracks available</Text>
-            </View>
-          ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={{ flexDirection: 'row', gap: 16, paddingLeft: 4, paddingRight: 24 }}>
-                {recommendedTracks.map((track) => (
-                  <View key={track.id} style={{ width: 180 }}>
-                    <TrackCard
-                      track={track}
-                      onPlay={handlePlayTrack}
-                      onAddToQueue={handleAddToQueue}
-                      isPlaying={player.currentTrack?.id === track.id && player.isPlaying}
-                      compactGrid
-                      showActions={true}
-                    />
-                  </View>
-                ))}
+        <View className="rounded-2xl overflow-hidden border-dark-600/80 bg-dark-800/90">
+          <View className="absolute top-0 left-0 right-0 h-0.5 bg-yellow-500/60" />
+          <View className="px-4 py-5">
+            <View className="flex-row items-center gap-3 mb-1">
+              <View className="items-center justify-center w-10 h-10 rounded-xl bg-yellow-500/20 border border-yellow-500/30">
+                <Star size={22} color="#eab308" strokeWidth={2} />
               </View>
-            </ScrollView>
-          )}
+              <View className="flex-1 min-w-0">
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-xl font-bold text-white">Recommended for You</Text>
+                  {isLoadingRecommendations && <ActivityIndicator size="small" color="#eab308" />}
+                </View>
+                <Text className="text-gray-400 text-xs mt-0.5">Picked based on your listening history</Text>
+              </View>
+            </View>
+            {recommendedTracks.length === 0 && !isLoadingRecommendations ? (
+              <View className="items-center py-10">
+                <Star size={36} color="#374151" />
+                <Text className="text-gray-400 text-sm mt-3">No recommendations yet</Text>
+                <Text className="text-gray-500 text-xs mt-1">Keep listening to get personalised picks</Text>
+              </View>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 16 }}>
+                <View style={{ flexDirection: 'row', gap: 16, paddingLeft: 4, paddingRight: 24 }}>
+                  {recommendedTracks.map((track) => (
+                    <View key={track.id} style={{ width: 180 }}>
+                      <TrackCard
+                        track={track}
+                        onPlay={handlePlayTrack}
+                        onAddToQueue={handleAddToQueue}
+                        isPlaying={player.currentTrack?.id === track.id && player.isPlaying}
+                        compactGrid
+                        showActions={true}
+                      />
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
+          </View>
         </View>
 
         {/* Recently Played */}
         {recentTracks.length > 0 && (
-          <View>
-            <View className="flex-row items-center justify-between mb-4 gap-2">
-              <Text className="text-xl font-bold text-white flex-1" numberOfLines={1}>Recently Played</Text>
-              <Clock size={20} color="#9ca3af" />
-            </View>
-            <View className="gap-3">
-              {recentTracks.map(({ track, playedAt }) => (
-                <TouchableOpacity
-                  key={track.id}
-                  onPress={() => handlePlayTrack(track)}
-                  className="flex-row items-center gap-3 p-3 bg-dark-800 rounded-lg"
-                >
-                  <Image
-                    source={{ uri: track.cover }}
-                    className="w-12 h-12 rounded-lg flex-shrink-0"
-                    resizeMode="cover"
-                    accessibilityLabel={track.title}
-                  />
-                  <View className="flex-1 min-w-0">
-                    <Text className="text-sm font-medium text-white" numberOfLines={1}>{track.title}</Text>
-                    <Text className="text-xs text-gray-400" numberOfLines={1}>
-                      {track.artist}{track.album ? ` • ${track.album}` : ''}
-                    </Text>
-                    {track.genre && (
-                      <Text className="text-xs text-primary-400" numberOfLines={1}>{track.genre}</Text>
-                    )}
-                    <Text className="text-xs text-gray-500 mt-1">
-                      {`Played ${formatDistanceToNow(new Date(playedAt), { addSuffix: true })}`}
-                    </Text>
-                  </View>
-                  <View className="flex-row items-center gap-2 flex-shrink-0">
-                    <TouchableOpacity
-                      onPress={() => handlePlayTrack(track)}
-                      className="p-2 rounded-full bg-primary-600"
-                    >
-                      <Play size={14} color="white" fill="white" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleAddToQueue(track)}
-                      className="p-2 rounded-full"
-                    >
-                      <List size={14} color="#9ca3af" />
-                    </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-              ))}
+          <View className="rounded-2xl overflow-hidden border-dark-600/80 bg-dark-800/90">
+            <View className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500/60" />
+            <View className="px-4 py-5">
+              <View className="flex-row items-center gap-3 mb-4">
+                <View className="items-center justify-center w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30">
+                  <Clock size={22} color="#60a5fa" strokeWidth={2} />
+                </View>
+                <View>
+                  <Text className="text-xl font-bold text-white">Recently Played</Text>
+                  <Text className="text-gray-400 text-xs mt-0.5">Pick up where you left off</Text>
+                </View>
+              </View>
+              <View className="gap-2">
+                {recentTracks.map(({ track, playedAt }) => (
+                  <TouchableOpacity
+                    key={track.id}
+                    onPress={() => handlePlayTrack(track)}
+                    className="flex-row items-center gap-3 p-3 bg-dark-700/60 rounded-xl"
+                  >
+                    <Image
+                      source={{ uri: track.cover }}
+                      className="w-12 h-12 rounded-lg flex-shrink-0"
+                      resizeMode="cover"
+                      accessibilityLabel={track.title}
+                    />
+                    <View className="flex-1 min-w-0">
+                      <Text className="text-sm font-medium text-white" numberOfLines={1}>{track.title}</Text>
+                      <Text className="text-xs text-gray-400" numberOfLines={1}>
+                        {track.artist}{track.album ? ` • ${track.album}` : ''}
+                      </Text>
+                      {track.genre && (
+                        <Text className="text-xs text-primary-400" numberOfLines={1}>{track.genre}</Text>
+                      )}
+                      <Text className="text-xs text-gray-500 mt-0.5">
+                        {`Played ${formatDistanceToNow(new Date(playedAt), { addSuffix: true })}`}
+                      </Text>
+                    </View>
+                    <View className="flex-row items-center gap-2 flex-shrink-0">
+                      <TouchableOpacity
+                        onPress={() => handlePlayTrack(track)}
+                        className="p-2 rounded-full bg-primary-600"
+                      >
+                        <Play size={14} color="white" fill="white" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleAddToQueue(track)}
+                        className="p-2 rounded-full"
+                      >
+                        <List size={14} color="#9ca3af" />
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           </View>
         )}
 
         {/* Popular Tracks */}
-        <View>
-          <View className="flex-row items-center justify-between mb-4 gap-2">
-            <Text className="text-xl font-bold text-white flex-1" numberOfLines={1}>Popular Tracks</Text>
-            <TrendingUp size={24} color="#a78bfa" />
-          </View>
-          {popularTracks.length === 0 ? (
-            <View className="bg-dark-800 rounded-xl p-6 items-center">
-              <Text className="text-gray-400 text-sm">No popular tracks yet</Text>
-            </View>
-          ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={{ flexDirection: 'row', gap: 16, paddingLeft: 4, paddingRight: 24 }}>
-                {popularTracks.map((track) => (
-                  <View key={track.id} style={{ width: 180 }}>
-                    <TrackCard
-                      track={track}
-                      onPlay={handlePlayTrack}
-                      onAddToQueue={handleAddToQueue}
-                      isPlaying={player.currentTrack?.id === track.id && player.isPlaying}
-                      compactGrid
-                    />
-                  </View>
-                ))}
+        <View className="rounded-2xl overflow-hidden border-dark-600/80 bg-dark-800/90">
+          <View className="absolute top-0 left-0 right-0 h-0.5 bg-orange-500/60" />
+          <View className="px-4 py-5">
+            <View className="flex-row items-center gap-3 mb-1">
+              <View className="items-center justify-center w-10 h-10 rounded-xl bg-orange-500/20 border border-orange-500/30">
+                <Zap size={22} color="#f97316" strokeWidth={2} />
               </View>
-            </ScrollView>
-          )}
-        </View>
-
-        {/* Trending Users */}
-        <View>
-          <View className="flex-row items-center justify-between mb-4 gap-2">
-            <Text className="text-xl font-bold text-white flex-1" numberOfLines={1}>Trending Users</Text>
-            <TrendingUp size={24} color="#a78bfa" />
+              <View>
+                <Text className="text-xl font-bold text-white">Popular Tracks</Text>
+                <Text className="text-gray-400 text-xs mt-0.5">Most played across the community</Text>
+              </View>
+            </View>
+            {popularTracks.length === 0 ? (
+              <View className="items-center py-10">
+                <Zap size={36} color="#374151" />
+                <Text className="text-gray-400 text-sm mt-3">No popular tracks yet</Text>
+              </View>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 16 }}>
+                <View style={{ flexDirection: 'row', gap: 16, paddingLeft: 4, paddingRight: 24 }}>
+                  {popularTracks.map((track) => (
+                    <View key={track.id} style={{ width: 180 }}>
+                      <TrackCard
+                        track={track}
+                        onPlay={handlePlayTrack}
+                        onAddToQueue={handleAddToQueue}
+                        isPlaying={player.currentTrack?.id === track.id && player.isPlaying}
+                        compactGrid
+                      />
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
           </View>
-          <View className="gap-4">
-            {trendingUsers.map((u) => (
-              <UserCard key={u.id} user={u} />
-            ))}
-          </View>
         </View>
-
       </View>
 
       {/* Boost Modal */}
@@ -942,6 +894,7 @@ const Home: React.FC = () => {
         </View>
       </Modal>
     </ScrollView>
+    </SafeAreaView>
   );
 };
 

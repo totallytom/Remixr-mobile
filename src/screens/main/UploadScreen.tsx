@@ -7,6 +7,7 @@
  * Note: UploadStack.tsx imports from 'UploaddScreen' (double-d typo) — fix that import to 'UploadScreen'.
  */
 import React, { useState, useEffect } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -18,6 +19,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  Switch,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -133,6 +135,8 @@ const UnifiedUploadContent: React.FC = () => {
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
   const [uploadCounts, setUploadCounts] = useState<{ trackCount: number; albumCount: number } | null>(null);
+  const [challengesOpen, setChallengesOpen] = useState(false);
+  const [copyrightAcknowledged, setCopyrightAcknowledged] = useState(false);
 
   const isPro = user?.subscriptionTier === 'pro';
   const atTrackLimit = !isPro && (uploadCounts?.trackCount ?? 0) >= FREE_TRACK_LIMIT;
@@ -171,6 +175,7 @@ const UnifiedUploadContent: React.FC = () => {
     setCoverImage(null);
     setDropError(null);
     setUploadProgress(0);
+    setCopyrightAcknowledged(false);
     sound?.pauseAsync().catch(() => {});
     setIsPlaying(false);
   };
@@ -359,6 +364,7 @@ const UnifiedUploadContent: React.FC = () => {
           user_id: user.id,
           preview_start_sec: 0,
           preview_duration_sec: 20,
+          challenges_open: challengesOpen,
         })
         .select('id')
         .single();
@@ -648,14 +654,32 @@ const UnifiedUploadContent: React.FC = () => {
 
             <GenreSelector value={genre} onChange={setGenre} />
 
+            <View className="flex-row items-center justify-between py-1">
+              <View className="flex-1 mr-4">
+                <Text className="text-sm font-medium text-gray-300">Allow Challenges</Text>
+                <Text className="text-xs text-gray-500 mt-0.5">Let other artists record responses to this track</Text>
+              </View>
+              <Switch
+                value={challengesOpen}
+                onValueChange={setChallengesOpen}
+                trackColor={{ false: '#374151', true: '#7c3aed' }}
+                thumbColor="#fff"
+              />
+            </View>
+
             <CoverPicker coverImage={coverImage} onPick={pickCoverImage} onClear={() => setCoverImage(null)} />
 
             {isUploading && <ProgressBar progress={uploadProgress} label="Uploading..." />}
 
+            <CopyrightCheckbox
+              value={copyrightAcknowledged}
+              onChange={setCopyrightAcknowledged}
+            />
+
             <TouchableOpacity
               onPress={submitSingle}
-              disabled={isUploading}
-              className={`flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-violet-600 ${isUploading ? 'opacity-50' : ''}`}
+              disabled={isUploading || !copyrightAcknowledged}
+              className={`flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-violet-600 ${isUploading || !copyrightAcknowledged ? 'opacity-40' : ''}`}
             >
               {isUploading ? (
                 <ActivityIndicator size="small" color="#fff" />
@@ -774,10 +798,15 @@ const UnifiedUploadContent: React.FC = () => {
 
             {isUploading && <ProgressBar progress={uploadProgress} label="Uploading album..." />}
 
+            <CopyrightCheckbox
+              value={copyrightAcknowledged}
+              onChange={setCopyrightAcknowledged}
+            />
+
             <TouchableOpacity
               onPress={submitAlbum}
-              disabled={isUploading || atAlbumLimit}
-              className={`flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-violet-600 ${isUploading || atAlbumLimit ? 'opacity-50' : ''}`}
+              disabled={isUploading || atAlbumLimit || !copyrightAcknowledged}
+              className={`flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-violet-600 ${isUploading || atAlbumLimit || !copyrightAcknowledged ? 'opacity-40' : ''}`}
             >
               {isUploading ? (
                 <ActivityIndicator size="small" color="#fff" />
@@ -893,6 +922,31 @@ const CoverPicker: React.FC<{
   </View>
 );
 
+const CopyrightCheckbox: React.FC<{ value: boolean; onChange: (v: boolean) => void }> = ({
+  value,
+  onChange,
+}) => (
+  <TouchableOpacity
+    onPress={() => onChange(!value)}
+    activeOpacity={0.7}
+    className="flex-row items-start gap-3 py-1"
+  >
+    <View
+      className={`w-5 h-5 mt-0.5 rounded border-2 flex-shrink-0 items-center justify-center ${
+        value ? 'bg-violet-600 border-violet-500' : 'bg-dark-700 border-dark-500'
+      }`}
+    >
+      {value && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700', lineHeight: 14 }}>✓</Text>}
+    </View>
+    <Text className="flex-1 text-xs text-gray-400 leading-5">
+      I own the rights to this content or have permission to distribute it.{' '}
+      <Text className="text-gray-500">
+        Uploading copyrighted material without authorisation will result in automatic removal.
+      </Text>
+    </Text>
+  </TouchableOpacity>
+);
+
 const ProgressBar: React.FC<{ progress: number; label: string }> = ({ progress, label }) => (
   <View className="gap-1.5">
     <View className="flex-row justify-between">
@@ -916,6 +970,7 @@ const Upload: React.FC = () => {
 
   if (!isAuthenticated) {
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
       <View className="flex-1 items-center justify-center px-6 gap-6">
         <View className="bg-dark-700 rounded-2xl p-6">
           <Lock size={48} color="#a855f7" />
@@ -925,6 +980,7 @@ const Upload: React.FC = () => {
           Sign in to upload music or albums and manage your releases.
         </Text>
       </View>
+      </SafeAreaView>
     );
   }
 
@@ -942,6 +998,7 @@ const Upload: React.FC = () => {
     };
 
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
       <View className="flex-1 items-center justify-center px-6 gap-6">
         <View className="bg-dark-700 rounded-2xl p-6">
           <Lock size={48} color="#a855f7" />
@@ -969,16 +1026,19 @@ const Upload: React.FC = () => {
           </Text>
         </TouchableOpacity>
       </View>
+      </SafeAreaView>
     );
   }
 
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
     <View className="flex-1 bg-dark-900">
       <View className="px-4 pt-4 pb-2 border-b border-dark-700/50">
         <Text className="text-2xl font-bold text-white">Upload</Text>
       </View>
       <UnifiedUploadContent />
     </View>
+    </SafeAreaView>
   );
 };
 

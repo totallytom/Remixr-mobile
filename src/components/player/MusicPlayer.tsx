@@ -1,15 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   Image,
   TouchableOpacity,
   Modal,
-  FlatList,
+  ScrollView,
   StyleSheet,
   ActivityIndicator,
   ImageBackground,
+  Animated,
+  Easing,
+  Dimensions,
 } from 'react-native';
+
+const { height: SCREEN_H } = Dimensions.get('window');
+
+// Wraps any panel content with a spring-in fade + slide entrance
+const AnimatedPanel: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(anim, {
+      toValue: 1,
+      damping: 20,
+      stiffness: 260,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+  return (
+    <Animated.View style={{
+      opacity: anim,
+      transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+    }}>
+      {children}
+    </Animated.View>
+  );
+};
 import {
   Play,
   Pause,
@@ -24,8 +50,14 @@ import {
   Shuffle,
   RotateCcw,
   X,
+  Disc2,
+  Palette,
 } from 'lucide-react-native';
 import { useStore } from '../../store/useStore';
+import CassettePlayer from './CassettePlayer';
+import { hap } from '../../utils/haptics';
+import { useImageColors, PALETTES } from '../../hooks/useImageColors';
+import WaveformSeekBar from './WaveformSeekBar';
 
 const DEFAULT_TRACK_COVER = 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=400&fit=crop';
 
@@ -84,6 +116,9 @@ const SeekBar: React.FC<SeekBarProps> = ({
   return (
     <TouchableOpacity
       activeOpacity={1}
+      accessibilityRole="adjustable"
+      accessibilityLabel={`Seek. ${formatTime(currentTime)} of ${formatTime(duration)}`}
+      accessibilityValue={{ min: 0, max: Math.round(duration), now: Math.round(currentTime) }}
       onLayout={e => setBarWidth(e.nativeEvent.layout.width)}
       onPress={e => {
         if (barWidth > 0 && duration > 0) {
@@ -129,31 +164,74 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
     playTrack,
     removeFromQueue,
     setVolume,
+    setPlayerPalette,
+    playerPaletteIndex,
   } = useStore();
 
   const [showQueue, setShowQueue] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
+
+  const palette = useImageColors(track.cover);
+
+  // ── Open / close animation ──────────────────────────────────────────────────
+  const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
+
+  useEffect(() => {
+    Animated.spring(slideAnim, {
+      toValue: 0,
+      damping: 9,
+      stiffness: 160,
+      mass: 0.9,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  const handleClose = () => {
+    Animated.sequence([
+      // small upward bounce before flying off
+      Animated.timing(slideAnim, {
+        toValue: -28,
+        duration: 110,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: SCREEN_H,
+        duration: 340,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start(() => onClose());
+  };
 
   const repeatColor =
-    player.repeatMode === 'one' ? '#f59e0b'
-    : player.repeatMode === 'all' ? '#7c3aed'
+    player.repeatMode === 'one' ? palette.accent
+    : player.repeatMode === 'all' ? palette.accent
     : 'rgba(255,255,255,0.5)';
 
-  const shuffleColor = player.shuffle ? '#f59e0b' : 'rgba(255,255,255,0.5)';
+  const shuffleColor = player.shuffle ? palette.accent : 'rgba(255,255,255,0.5)';
 
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose}>
+    <Modal visible animationType="none" statusBarTranslucent onRequestClose={handleClose}>
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }]} />
+      <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateY: slideAnim }] }]}>
       <ImageBackground
         source={{ uri: track.cover || DEFAULT_TRACK_COVER }}
         style={StyleSheet.absoluteFill}
         resizeMode="cover"
         blurRadius={20}
       >
-        <View style={styles.fsOverlay}>
+        <ScrollView
+          style={styles.fsOverlay}
+          contentContainerStyle={styles.fsScrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           {/* Header */}
           <View style={styles.fsHeader}>
-            <TouchableOpacity onPress={onClose} style={styles.fsCircleBtn} activeOpacity={0.8}>
+            <TouchableOpacity onPress={handleClose} style={styles.fsCircleBtn} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Close player">
               <ChevronDown size={22} color="#fff" />
             </TouchableOpacity>
             <View style={styles.fsHeaderCenter}>
@@ -185,7 +263,16 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
 
           {/* Progress */}
           <View style={styles.fsProgressSection}>
-            <SeekBar currentTime={currentTime} duration={duration} onSeek={onSeek} color="#f59e0b" height={5} />
+            <WaveformSeekBar
+              currentTime={currentTime}
+              duration={duration}
+              onSeek={onSeek}
+              isPlaying={isPlaying}
+              color={palette.accent}
+              seed={track.id}
+              barCount={55}
+              height={64}
+            />
             <View style={styles.fsTimeRow}>
               <Text style={styles.fsTime}>{formatTime(currentTime)}</Text>
               <Text style={styles.fsTime}>{formatTime(duration)}</Text>
@@ -194,19 +281,22 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
 
           {/* Main controls */}
           <View style={styles.fsControls}>
-            <TouchableOpacity onPress={toggleShuffle} style={styles.fsSmallBtn} activeOpacity={0.7}>
+            <TouchableOpacity onPress={() => { hap.tap(); toggleShuffle(); }} style={styles.fsSmallBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={player.shuffle ? 'Shuffle on' : 'Shuffle off'} accessibilityState={{ checked: player.shuffle }}>
               <Shuffle size={22} color={shuffleColor} />
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={onPrevious} style={styles.fsMedBtn} activeOpacity={0.8}>
+            <TouchableOpacity onPress={() => { hap.tap(); onPrevious(); }} style={styles.fsMedBtn} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Previous track">
               <SkipBack size={28} color="#fff" />
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={onPlayPause}
+              onPress={() => { hap.tap(); onPlayPause(); }}
               disabled={player.isBuffering}
               style={[styles.fsPlayBtn, player.isBuffering && { opacity: 0.5 }]}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={player.isBuffering ? 'Loading' : isPlaying ? 'Pause' : 'Play'}
+              accessibilityState={{ disabled: player.isBuffering }}
             >
               {player.isBuffering
                 ? <ActivityIndicator color="#000" />
@@ -215,14 +305,14 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
                   : <Play size={34} color="#000" />}
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={onNext} style={styles.fsMedBtn} activeOpacity={0.8}>
+            <TouchableOpacity onPress={() => { hap.tap(); onNext(); }} style={styles.fsMedBtn} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Next track">
               <SkipForward size={28} color="#fff" />
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={toggleRepeat} style={[styles.fsSmallBtn, { position: 'relative' }]} activeOpacity={0.7}>
+            <TouchableOpacity onPress={() => { hap.tap(); toggleRepeat(); }} style={[styles.fsSmallBtn, { position: 'relative' }]} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={player.repeatMode === 'off' ? 'Repeat off' : player.repeatMode === 'one' ? 'Repeat one' : 'Repeat all'} accessibilityState={{ checked: player.repeatMode !== 'off' }}>
               <Repeat size={22} color={repeatColor} />
               {player.repeatMode === 'one' && (
-                <View style={styles.repeatBadge}>
+                <View style={[styles.repeatBadge, { backgroundColor: palette.accent }]}>
                   <Text style={styles.repeatBadgeText}>1</Text>
                 </View>
               )}
@@ -232,17 +322,23 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
           {/* Secondary controls */}
           <View style={styles.fsSecondary}>
             <TouchableOpacity
-              onPress={() => setIsBookmarked(b => !b)}
+              onPress={() => { hap.medium(); setIsBookmarked(b => !b); }}
               style={styles.fsIconBtn}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={isBookmarked ? 'Remove bookmark' : 'Bookmark'}
+              accessibilityState={{ checked: isBookmarked }}
             >
-              <Bookmark size={20} color={isBookmarked ? '#60a5fa' : '#fff'} fill={isBookmarked ? '#60a5fa' : 'none'} />
+              <Bookmark size={20} color={isBookmarked ? palette.accent : '#fff'} fill={isBookmarked ? palette.accent : 'none'} />
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => setShowQueue(v => !v)}
-              style={[styles.fsIconBtn, showQueue && styles.fsIconBtnActive]}
+              onPress={() => { hap.tap(); setShowQueue(v => !v); }}
+              style={[styles.fsIconBtn, showQueue && { backgroundColor: `${palette.accent}33` }]}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={showQueue ? 'Hide queue' : `Show queue, ${player.queue.length} tracks`}
+              accessibilityState={{ checked: showQueue }}
             >
               <List size={20} color="#fff" />
               {player.queue.length > 0 && (
@@ -252,38 +348,65 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => setShowVolume(v => !v)}
-              style={[styles.fsIconBtn, showVolume && styles.fsIconBtnActive]}
-              activeOpacity={0.7}
-            >
-              {player.volume === 0 ? <VolumeX size={20} color="#fff" /> : <Volume2 size={20} color="#fff" />}
+            <TouchableOpacity onPress={() => { hap.tap(); onSeek(0); }} style={styles.fsIconBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Restart track">
+              <RotateCcw size={20} color="#fff" />
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => onSeek(0)} style={styles.fsIconBtn} activeOpacity={0.7}>
-              <RotateCcw size={20} color="#fff" />
+            <TouchableOpacity
+              onPress={() => { hap.tap(); setShowPalette(v => !v); setShowQueue(false); setShowVolume(false); }}
+              style={[styles.fsIconBtn, showPalette && { backgroundColor: `${palette.accent}33` }]}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Choose player color"
+              accessibilityState={{ checked: showPalette }}
+            >
+              <Palette size={20} color={showPalette ? palette.accent : '#fff'} />
             </TouchableOpacity>
           </View>
 
-          {/* Volume slider (inline) */}
-          {showVolume && (
-            <View style={styles.fsVolumeRow}>
-              <VolumeX size={16} color="rgba(255,255,255,0.5)" />
-              <View style={{ flex: 1, marginHorizontal: 10 }}>
-                <SeekBar
-                  currentTime={player.volume}
-                  duration={1}
-                  onSeek={v => setVolume(v)}
-                  color="#f59e0b"
-                  height={4}
-                />
+
+          {/* Palette picker panel */}
+          {showPalette && (
+            <AnimatedPanel>
+            <View style={styles.fsPalettePanel}>
+              <Text style={styles.fsPaletteTitle}>Player Color</Text>
+              <View style={styles.fsPaletteGrid}>
+                {/* Auto option */}
+                <TouchableOpacity
+                  onPress={() => { hap.tap(); setPlayerPalette(null); }}
+                  style={[
+                    styles.fsPaletteSwatch,
+                    { backgroundColor: '#2a2a2a', borderWidth: 2, borderColor: playerPaletteIndex === null ? '#fff' : 'transparent' },
+                  ]}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="Auto color"
+                >
+                  <Text style={styles.fsPaletteAutoText}>A</Text>
+                </TouchableOpacity>
+
+                {PALETTES.map(([accent], i) => (
+                  <TouchableOpacity
+                    key={i}
+                    onPress={() => { hap.tap(); setPlayerPalette(i); }}
+                    style={[
+                      styles.fsPaletteSwatch,
+                      { backgroundColor: accent, borderWidth: 2, borderColor: playerPaletteIndex === i ? '#fff' : 'transparent' },
+                    ]}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Color option ${i + 1}`}
+                    accessibilityState={{ checked: playerPaletteIndex === i }}
+                  />
+                ))}
               </View>
-              <Volume2 size={16} color="rgba(255,255,255,0.5)" />
             </View>
+            </AnimatedPanel>
           )}
 
           {/* Queue panel */}
           {showQueue && (
+            <AnimatedPanel>
             <View style={styles.fsQueuePanel}>
               <View style={styles.fsQueueHeader}>
                 <Text style={styles.fsQueueTitle}>Queue ({player.queue.length})</Text>
@@ -292,15 +415,15 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
               {player.queue.length === 0 ? (
                 <Text style={styles.fsQueueEmpty}>No tracks in queue</Text>
               ) : (
-                <FlatList
-                  data={player.queue}
-                  keyExtractor={(t: any) => t.id}
-                  showsVerticalScrollIndicator={false}
-                  renderItem={({ item: t, index }: { item: any; index: number }) => (
+                <View>
+                  {player.queue.map((t: any, index: number) => (
                     <TouchableOpacity
-                      onPress={() => playTrack(t)}
+                      key={t.id}
+                      onPress={() => { hap.tap(); playTrack(t); }}
                       style={styles.queueItem}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Play ${t.title} by ${t.artist}`}
                     >
                       <Text style={styles.queueIndex}>{index + 1}</Text>
                       <Image
@@ -312,17 +435,19 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
                         <Text style={styles.queueTitle} numberOfLines={1}>{t.title}</Text>
                         <Text style={styles.queueArtist} numberOfLines={1}>{t.artist}</Text>
                       </View>
-                      <TouchableOpacity onPress={() => removeFromQueue(t.id)} activeOpacity={0.7} hitSlop={8}>
+                      <TouchableOpacity onPress={() => { hap.medium(); removeFromQueue(t.id); }} activeOpacity={0.7} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Remove ${t.title} from queue`}>
                         <X size={16} color="#6b7280" />
                       </TouchableOpacity>
                     </TouchableOpacity>
-                  )}
-                />
+                  ))}
+                </View>
               )}
             </View>
+            </AnimatedPanel>
           )}
-        </View>
+        </ScrollView>
       </ImageBackground>
+      </Animated.View>
     </Modal>
   );
 };
@@ -341,31 +466,40 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
   visible,
   onToggleVisibility,
 }) => {
-  const { player } = useStore();
+  const { player, dismissPlayer } = useStore() as any;
   const [showFullScreen, setShowFullScreen] = useState(false);
+  const [showCassette, setShowCassette] = useState(false);
+  const palette = useImageColors(currentTrack?.cover);
 
   if (!visible || !currentTrack) return null;
 
   return (
     <>
-      {/* Mini player bar */}
-      <View style={styles.miniBar}>
-        {/* Progress line at top edge */}
-        <SeekBar
+      {/* Waveform above mini bar */}
+      <View style={styles.waveformStrip}>
+        <WaveformSeekBar
           currentTime={currentTime}
           duration={duration}
           onSeek={onSeek}
-          color="#0ea5e9"
-          trackColor="#e5e7eb"
-          height={3}
+          isPlaying={isPlaying}
+          color={palette.accent}
+          seed={currentTrack.id}
+          barCount={60}
+          height={48}
         />
+      </View>
 
+      {/* Mini player bar */}
+      <View style={styles.miniBar}>
         <View style={styles.miniContent}>
           {/* Album art — tap to open full screen */}
           <TouchableOpacity
-            onPress={() => setShowFullScreen(true)}
+            onPress={() => { hap.tap(); setShowFullScreen(true); }}
             style={styles.miniArt}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`${currentTrack.title} by ${currentTrack.artist}`}
+            accessibilityHint="Opens the full player"
           >
             <Image
               source={{ uri: currentTrack.cover || DEFAULT_TRACK_COVER }}
@@ -381,33 +515,59 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
           </View>
 
           {/* Controls */}
-          <TouchableOpacity onPress={onPrevious} style={styles.miniBtn} activeOpacity={0.7}>
-            <SkipBack size={20} color="#111827" />
+          <TouchableOpacity onPress={() => { hap.tap(); onPrevious(); }} style={styles.miniBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Previous track">
+            <SkipBack size={20} color="black" />
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={onPlayPause}
+            onPress={() => { hap.tap(); onPlayPause(); }}
             disabled={player.isBuffering}
-            style={styles.miniPlayBtn}
+            style={[styles.miniPlayBtn, { backgroundColor: palette.accent }]}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={player.isBuffering ? 'Loading' : isPlaying ? 'Pause' : 'Play'}
+            accessibilityState={{ disabled: player.isBuffering }}
           >
             {player.isBuffering
-              ? <ActivityIndicator size="small" color="#fff" />
+              ? <ActivityIndicator size="small" color="black" />
               : isPlaying
-                ? <Pause size={20} color="#fff" />
-                : <Play size={20} color="#fff" />}
+                ? <Pause size={20} color="black" />
+                : <Play size={20} color="black" />}
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={onNext} style={styles.miniBtn} activeOpacity={0.7}>
-            <SkipForward size={20} color="#111827" />
+          <TouchableOpacity onPress={() => { hap.tap(); onNext(); }} style={styles.miniBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Next track">
+            <SkipForward size={20} color="black" />
+          </TouchableOpacity>
+
+          {/* Cassette mode */}
+          <TouchableOpacity onPress={() => { hap.tap(); setShowCassette(true); }} style={styles.miniBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Open cassette player">
+            <Disc2 size={18} color={palette.accent} />
           </TouchableOpacity>
 
           {/* Hide player */}
-          <TouchableOpacity onPress={onToggleVisibility} style={styles.miniDismissBtn} activeOpacity={0.7}>
-            <ChevronDown size={18} color="#9ca3af" />
+          <TouchableOpacity onPress={() => { hap.tap(); onToggleVisibility(); }} style={styles.miniDismissBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Hide player">
+            <ChevronDown size={18} color="black" />
+          </TouchableOpacity>
+
+          {/* Remove player */}
+          <TouchableOpacity onPress={() => { hap.medium(); dismissPlayer(); }} style={styles.miniDismissBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Stop and remove player">
+            <X size={16} color="black" />
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Cassette player */}
+      <CassettePlayer
+        visible={showCassette}
+        onClose={() => setShowCassette(false)}
+        isPlaying={isPlaying}
+        onPlayPause={onPlayPause}
+        onNext={onNext}
+        onPrevious={onPrevious}
+        onSeek={onSeek}
+        currentTime={currentTime}
+        duration={duration}
+      />
 
       {/* Full-screen player */}
       {showFullScreen && (
@@ -439,15 +599,14 @@ const styles = StyleSheet.create({
   },
 
   // ── Mini player ────────────────────────────────────────────────────────────
+  waveformStrip: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
   miniBar: {
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 8,
+    backgroundColor: 'white',
   },
   miniContent: {
     flexDirection: 'row',
@@ -461,7 +620,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 8,
     overflow: 'hidden',
-    backgroundColor: '#e5e7eb',
+    backgroundColor: 'rgba(255,255,255,0.15)',
     flexShrink: 0,
   },
   miniInfo: {
@@ -471,11 +630,11 @@ const styles = StyleSheet.create({
   miniTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#111827',
+    color: 'black',
   },
   miniArtist: {
     fontSize: 12,
-    color: '#6b7280',
+    color: 'black',
     marginTop: 1,
   },
   miniBtn: {
@@ -506,9 +665,11 @@ const styles = StyleSheet.create({
   fsOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  fsScrollContent: {
     paddingTop: 56,
     paddingHorizontal: 24,
-    paddingBottom: 40,
+    paddingBottom: 48,
   },
   fsHeader: {
     flexDirection: 'row',
@@ -640,6 +801,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
     paddingHorizontal: 8,
+  },
+
+  fsPalettePanel: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 12,
+  },
+  fsPaletteTitle: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  fsPaletteGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  fsPaletteSwatch: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fsPaletteAutoText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
   },
 
   fsQueuePanel: {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -198,18 +199,22 @@ const ArtistScreen: React.FC = () => {
   // ── Loading / error states ────────────────────────────────────────────────
   if (isLoading) {
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
       <View className="flex-1 items-center justify-center gap-3 bg-dark-900">
         <ActivityIndicator size="large" color="#7c3aed" />
         <Text className="text-gray-400">Loading profile...</Text>
       </View>
+      </SafeAreaView>
     );
   }
 
   if (!profile) {
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
       <View className="flex-1 items-center justify-center bg-dark-900">
         <Text className="text-gray-400">Artist not found</Text>
       </View>
+      </SafeAreaView>
     );
   }
 
@@ -223,6 +228,7 @@ const ArtistScreen: React.FC = () => {
   ] as { key: typeof activeTab; label: string }[];
 
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
     <ScrollView className="flex-1 bg-dark-900" contentContainerStyle={{ paddingBottom: 32 }}>
 
       {/* Back button */}
@@ -627,6 +633,7 @@ const ArtistScreen: React.FC = () => {
       </Modal>
 
     </ScrollView>
+    </SafeAreaView>
   );
 };
 

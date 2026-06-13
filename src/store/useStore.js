@@ -23,7 +23,7 @@ export const useStore = create((set, get) => ({
   // --------------------
   user: null,
   isAuthenticated: false,
-  isAuthInitialized: true,
+  isAuthInitialized: false,
 
   player: {
     currentTrack: null,
@@ -50,6 +50,7 @@ export const useStore = create((set, get) => ({
   sidebarOpen: true,
   currentView: 'home',
   isSettingsOpen: false,
+  settingsInitialTab: 'account',
 
   theme: {
     type: 'light',
@@ -57,6 +58,9 @@ export const useStore = create((set, get) => ({
     customSecondaryColor: null,
     customBackgroundColor: null,
   },
+
+  backgroundPresetId: 'default',
+  playerPaletteIndex: null, // null = auto (hash-based), number = fixed palette
 
   playEvent: 0,
 
@@ -82,9 +86,29 @@ export const useStore = create((set, get) => ({
     playlists: s.playlists.filter(p => p.id !== playlistId)
   })),
   setSettingsOpen: (isSettingsOpen) => set({ isSettingsOpen }),
+  setSettingsInitialTab: (settingsInitialTab) => set({ settingsInitialTab }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   triggerPlayEvent: () => set((s) => ({ playEvent: s.playEvent + 1 })),
   setTheme: (theme) => set({ theme }),
+  setBackgroundPreset: (id) => {
+    storage.set(STORAGE_KEYS.BACKGROUND_PRESET, id);
+    set({ backgroundPresetId: id });
+  },
+  initBackgroundPreset: async () => {
+    const saved = await storage.get(STORAGE_KEYS.BACKGROUND_PRESET);
+    if (saved) set({ backgroundPresetId: saved });
+  },
+  setPlayerPalette: (index) => {
+    storage.set(STORAGE_KEYS.PLAYER_PALETTE, index !== null ? String(index) : '');
+    set({ playerPaletteIndex: index });
+  },
+  initPlayerPalette: async () => {
+    const saved = await storage.get(STORAGE_KEYS.PLAYER_PALETTE);
+    if (saved) {
+      const i = parseInt(saved, 10);
+      if (!isNaN(i)) set({ playerPaletteIndex: i });
+    }
+  },
 
   // --------------------
   // AUDIO INIT
@@ -209,6 +233,30 @@ export const useStore = create((set, get) => ({
         console.error('[audio] pauseAsync failed:', e);
       }
     }
+  },
+
+  dismissPlayer: async () => {
+    if (_sound) {
+      try {
+        await _sound.stopAsync();
+        await _sound.unloadAsync();
+      } catch (e) {}
+      _sound = null;
+    }
+    set((s) => ({
+      player: {
+        ...s.player,
+        currentTrack: null,
+        isPlaying: false,
+        visible: false,
+        currentTime: 0,
+        duration: 0,
+        isLoaded: false,
+        isBuffering: false,
+        queue: [],
+        trackHistory: [],
+      },
+    }));
   },
 
   resumeTrack: async () => {

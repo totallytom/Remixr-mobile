@@ -7,12 +7,14 @@ export interface StorageAdapter {
 }
 
 export const STORAGE_KEYS = {
-  USER_STATUS:      'sypher_user_status',
-  THEME:            'remix-theme',
-  PROFILE_CACHE:    'sypher_cached_profile',
-  SUPABASE_SESSION: 'supabase.auth.session',
-  deletedChats:     (userId: string) => `deleted_chats_${userId}`,
-  onboardingPending:(userId: string) => `sypher_onboarding_pending_${userId}`,
+  USER_STATUS:       'sypher_user_status',
+  THEME:             'remix-theme',
+  PROFILE_CACHE:     'sypher_cached_profile',
+  SUPABASE_SESSION:  'supabase.auth.session',
+  BACKGROUND_PRESET: 'sypher_background_preset',
+  PLAYER_PALETTE:    'sypher_player_palette',
+  deletedChats:      (userId: string) => `deleted_chats_${userId}`,
+  onboardingPending: (userId: string) => `sypher_onboarding_pending_${userId}`,
 } as const;
 
 const _adapter: StorageAdapter = {

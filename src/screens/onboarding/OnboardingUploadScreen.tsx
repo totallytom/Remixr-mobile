@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -363,15 +364,18 @@ const OnboardingUpload: React.FC = () => {
   // ── Loading guard ──────────────────────────────────────────────────────────
   if (!user) {
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
       <View className="flex-1 bg-dark-900 items-center justify-center">
         <ActivityIndicator size="large" color="#a78bfa" />
         <Text className="text-white/40 text-sm mt-3">Loading…</Text>
       </View>
+      </SafeAreaView>
     );
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
     <ScrollView
       className="flex-1 bg-dark-900"
       contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
@@ -611,6 +615,7 @@ const OnboardingUpload: React.FC = () => {
         </TouchableOpacity>
       )}
     </ScrollView>
+    </SafeAreaView>
   );
 };
 

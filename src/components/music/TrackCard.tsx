@@ -27,6 +27,7 @@ import {
   Check,
 } from 'lucide-react-native';
 import { useStore } from '../../store/useStore';
+import { hap } from '../../utils/haptics';
 import { MusicService } from '../../services/musicService';
 import { ChatService } from '../../services/chatService';
 import { getAvatarUrl } from '../../utils/avatar';
@@ -159,7 +160,7 @@ const PlaylistModal: React.FC<PlaylistModalProps> = ({ visible, track, onClose }
             <Text style={styles.sheetTitle}>
               {showCreate ? 'Create Playlist' : 'Add to Playlist'}
             </Text>
-            <TouchableOpacity onPress={onClose} activeOpacity={0.7}>
+            <TouchableOpacity onPress={onClose} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Close">
               <X size={20} color="#6b7280" />
             </TouchableOpacity>
           </View>
@@ -190,6 +191,9 @@ const PlaylistModal: React.FC<PlaylistModalProps> = ({ visible, track, onClose }
                   disabled={isCreating || !newName.trim()}
                   style={[styles.btnPrimary, (isCreating || !newName.trim()) && styles.btnDisabled]}
                   activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Create playlist and add track"
+                  accessibilityState={{ disabled: isCreating || !newName.trim() }}
                 >
                   {isCreating
                     ? <ActivityIndicator size="small" color="#fff" />
@@ -199,6 +203,8 @@ const PlaylistModal: React.FC<PlaylistModalProps> = ({ visible, track, onClose }
                   onPress={() => { setShowCreate(false); setNewName(''); setIsPublic(true); }}
                   style={styles.btnSecondary}
                   activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
                 >
                   <Text style={styles.btnSecondaryText}>Cancel</Text>
                 </TouchableOpacity>
@@ -218,10 +224,13 @@ const PlaylistModal: React.FC<PlaylistModalProps> = ({ visible, track, onClose }
                       return (
                         <TouchableOpacity
                           key={pl.id}
-                          onPress={() => !alreadyIn && handleAdd(pl.id)}
+                          onPress={() => { hap.tap(); if (!alreadyIn) handleAdd(pl.id); }}
                           disabled={alreadyIn}
                           style={[styles.playlistItem, alreadyIn && styles.playlistItemDim]}
                           activeOpacity={0.7}
+                          accessibilityRole="button"
+                          accessibilityLabel={alreadyIn ? `${pl.name}, already added` : `Add to ${pl.name}`}
+                          accessibilityState={{ disabled: alreadyIn }}
                         >
                           <Music size={16} color={alreadyIn ? '#6b7280' : '#d1d5db'} />
                           <Text style={[styles.playlistName, alreadyIn && styles.playlistNameDim]} numberOfLines={1}>
@@ -235,9 +244,11 @@ const PlaylistModal: React.FC<PlaylistModalProps> = ({ visible, track, onClose }
                 </ScrollView>
               )}
               <TouchableOpacity
-                onPress={() => setShowCreate(true)}
+                onPress={() => { hap.tap(); setShowCreate(true); }}
                 style={styles.createBtn}
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Create new playlist"
               >
                 <Plus size={16} color="#fff" />
                 <Text style={styles.createBtnText}>Create new playlist</Text>
@@ -320,7 +331,7 @@ const MessageModal: React.FC<MessageModalProps> = ({ visible, track, onClose }) 
         <View style={styles.sheet}>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>Send to user</Text>
-            <TouchableOpacity onPress={handleClose} activeOpacity={0.7}>
+            <TouchableOpacity onPress={handleClose} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Close">
               <X size={20} color="#6b7280" />
             </TouchableOpacity>
           </View>
@@ -356,9 +367,12 @@ const MessageModal: React.FC<MessageModalProps> = ({ visible, track, onClose }) 
                 style={{ maxHeight: 260 }}
                 renderItem={({ item: u }) => (
                   <TouchableOpacity
-                    onPress={() => handleSend(u.id)}
+                    onPress={() => { hap.tap(); handleSend(u.id); }}
                     style={styles.userItem}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={sentId === u.id ? `Sent to ${u.username}` : `Send to ${u.username}`}
+                    accessibilityState={{ disabled: sentId === u.id }}
                   >
                     <Image
                       source={{ uri: getAvatarUrl(u.avatar) }}
@@ -431,6 +445,7 @@ const TrackCard: React.FC<TrackCardProps> = ({
   }, [track.id, user]);
 
   const handlePlayPause = useCallback(() => {
+    hap.tap();
     if (isCurrentlyPlaying) {
       pauseTrack();
     } else if (onPlay) {
@@ -441,12 +456,14 @@ const TrackCard: React.FC<TrackCardProps> = ({
   }, [isCurrentlyPlaying, onPlay, track, pauseTrack, playTrack]);
 
   const handleAddToQueue = useCallback(() => {
+    hap.tap();
     if (onAddToQueue) onAddToQueue(track);
     else addToQueue(track);
   }, [onAddToQueue, track, addToQueue]);
 
   const handleBookmark = useCallback(async () => {
     if (!user) return;
+    hap.medium();
     try {
       if (isLiked) {
         await MusicService.removeBookmark(track.id, user.id);
@@ -462,6 +479,7 @@ const TrackCard: React.FC<TrackCardProps> = ({
 
   const handleTrackLike = useCallback(async () => {
     if (!user) return;
+    hap.medium();
     const prevCount = likesCount;
     const prevLiked = isLikedByUser;
     setLikesCount(c => isLikedByUser ? Math.max(0, c - 1) : c + 1);
@@ -503,7 +521,7 @@ const TrackCard: React.FC<TrackCardProps> = ({
               resizeMode="cover"
               onError={() => setCoverError(true)}
             />
-            <TouchableOpacity onPress={handlePlayPause} style={styles.gridPlayBtn} activeOpacity={0.8}>
+            <TouchableOpacity onPress={handlePlayPause} style={styles.gridPlayBtn} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={isCurrentlyPlaying ? `Pause ${track.title}` : `Play ${track.title}`} accessibilityState={{ checked: isCurrentlyPlaying }}>
               <View style={styles.playCircle}>
                 {isCurrentlyPlaying ? <Pause size={22} color="#000" /> : <Play size={22} color="#000" />}
               </View>
@@ -511,16 +529,16 @@ const TrackCard: React.FC<TrackCardProps> = ({
 
             {showActions && isAuthenticated && (
               <View style={styles.gridActions}>
-                <TouchableOpacity onPress={() => setShowPlaylistModal(true)} style={styles.iconBtn} activeOpacity={0.8}>
+                <TouchableOpacity onPress={() => { hap.tap(); setShowPlaylistModal(true); }} style={styles.iconBtn} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Add to playlist">
                   <Plus size={13} color="#374151" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleBookmark} style={[styles.iconBtn, isLiked && styles.iconBtnActive]} activeOpacity={0.8}>
+                <TouchableOpacity onPress={handleBookmark} style={[styles.iconBtn, isLiked && styles.iconBtnActive]} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={isLiked ? 'Remove bookmark' : 'Bookmark'} accessibilityState={{ checked: isLiked }}>
                   <Bookmark size={13} color={isLiked ? '#fff' : '#374151'} fill={isLiked ? '#60a5fa' : 'none'} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleAddToQueue} style={styles.iconBtn} activeOpacity={0.8}>
+                <TouchableOpacity onPress={handleAddToQueue} style={styles.iconBtn} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Add to queue">
                   <List size={13} color="#374151" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowMessageModal(true)} style={styles.iconBtn} activeOpacity={0.8}>
+                <TouchableOpacity onPress={() => { hap.tap(); setShowMessageModal(true); }} style={styles.iconBtn} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Send to user">
                   <MessageCircle size={13} color="#374151" />
                 </TouchableOpacity>
                 {onDelete && (
@@ -539,9 +557,9 @@ const TrackCard: React.FC<TrackCardProps> = ({
             <View style={styles.gridMeta}>
               <Text style={styles.metaText}>{formatDuration(track.duration)}</Text>
               {user && (
-                <TouchableOpacity onPress={handleTrackLike} style={styles.likeRow} activeOpacity={0.7}>
+                <TouchableOpacity onPress={handleTrackLike} style={styles.likeRow} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={isLikedByUser ? 'Unlike' : 'Like'} accessibilityState={{ checked: isLikedByUser }}>
                   <ThumbsUp size={12} color={isLikedByUser ? '#60a5fa' : '#9ca3af'} fill={isLikedByUser ? '#60a5fa' : 'none'} />
-                  <Text style={styles.metaText}> {likesCount}</Text>
+                  <Text accessible={false} style={styles.metaText}> {likesCount}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -569,7 +587,7 @@ const TrackCard: React.FC<TrackCardProps> = ({
     <>
       <View style={styles.rowCard}>
         {/* Album art — tap to play */}
-        <TouchableOpacity onPress={handlePlayPause} style={styles.rowArt} activeOpacity={0.85}>
+        <TouchableOpacity onPress={handlePlayPause} style={styles.rowArt} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={isCurrentlyPlaying ? `Pause ${track.title}` : `Play ${track.title} by ${track.artist}`}>
           <Image
             source={coverSource}
             style={StyleSheet.absoluteFill}
@@ -592,9 +610,9 @@ const TrackCard: React.FC<TrackCardProps> = ({
           <View style={styles.rowMeta}>
             <Text style={styles.metaText}>{formatDuration(track.duration)}</Text>
             {user && (
-              <TouchableOpacity onPress={handleTrackLike} style={styles.likeRow} activeOpacity={0.7}>
+              <TouchableOpacity onPress={handleTrackLike} style={styles.likeRow} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={isLikedByUser ? 'Unlike' : 'Like'} accessibilityState={{ checked: isLikedByUser }}>
                 <ThumbsUp size={14} color={isLikedByUser ? '#60a5fa' : '#9ca3af'} fill={isLikedByUser ? '#60a5fa' : 'none'} />
-                <Text style={styles.metaText}> {likesCount}</Text>
+                <Text accessible={false} style={styles.metaText}> {likesCount}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -602,11 +620,11 @@ const TrackCard: React.FC<TrackCardProps> = ({
 
         {/* Action buttons */}
         <View style={styles.rowActions}>
-          <TouchableOpacity onPress={handlePlayPause} style={styles.playBtn} activeOpacity={0.85}>
+          <TouchableOpacity onPress={handlePlayPause} style={styles.playBtn} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={isCurrentlyPlaying ? `Pause ${track.title}` : `Play ${track.title}`} accessibilityState={{ checked: isCurrentlyPlaying }}>
             {isCurrentlyPlaying ? <Pause size={20} color="#fff" /> : <Play size={20} color="#fff" />}
           </TouchableOpacity>
           {showActions && isAuthenticated && (
-            <TouchableOpacity onPress={() => setShowMenu(true)} style={styles.moreBtn} activeOpacity={0.7}>
+            <TouchableOpacity onPress={() => { hap.tap(); setShowMenu(true); }} style={styles.moreBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={`More options for ${track.title}`}>
               <MoreVertical size={18} color="#6b7280" />
             </TouchableOpacity>
           )}
@@ -621,8 +639,10 @@ const TrackCard: React.FC<TrackCardProps> = ({
 
             <TouchableOpacity
               style={styles.menuRow}
-              onPress={() => { setShowMenu(false); setShowPlaylistModal(true); }}
+              onPress={() => { hap.tap(); setShowMenu(false); setShowPlaylistModal(true); }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Add to playlist"
             >
               <Plus size={16} color="#d1d5db" />
               <Text style={styles.menuText}>Add to playlist</Text>
@@ -632,6 +652,8 @@ const TrackCard: React.FC<TrackCardProps> = ({
               style={styles.menuRow}
               onPress={() => { setShowMenu(false); handleBookmark(); }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={isLiked ? 'Remove bookmark' : 'Bookmark'}
             >
               <Bookmark size={16} color={isLiked ? '#60a5fa' : '#d1d5db'} fill={isLiked ? '#60a5fa' : 'none'} />
               <Text style={styles.menuText}>{isLiked ? 'Remove bookmark' : 'Bookmark'}</Text>
@@ -641,6 +663,8 @@ const TrackCard: React.FC<TrackCardProps> = ({
               style={styles.menuRow}
               onPress={() => { setShowMenu(false); handleAddToQueue(); }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Add to queue"
             >
               <List size={16} color="#d1d5db" />
               <Text style={styles.menuText}>Add to queue</Text>
@@ -648,8 +672,10 @@ const TrackCard: React.FC<TrackCardProps> = ({
 
             <TouchableOpacity
               style={styles.menuRow}
-              onPress={() => { setShowMenu(false); setShowMessageModal(true); }}
+              onPress={() => { hap.tap(); setShowMenu(false); setShowMessageModal(true); }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Send to user"
             >
               <MessageCircle size={16} color="#d1d5db" />
               <Text style={styles.menuText}>Send to user</Text>
@@ -668,8 +694,10 @@ const TrackCard: React.FC<TrackCardProps> = ({
 
             <TouchableOpacity
               style={styles.cancelBtn}
-              onPress={() => setShowMenu(false)}
+              onPress={() => { hap.tap(); setShowMenu(false); }}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
             >
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
@@ -807,19 +835,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     padding: 12,
-    borderRadius: 12,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
+    borderRadius: 0,
+    backgroundColor: '#111',
+    borderWidth: 2,
     borderColor: '#e5e7eb',
     marginBottom: 4,
+    shadowColor: '#f97316',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
   },
   rowArt: {
     width: 60,
     height: 60,
-    borderRadius: 8,
+    borderRadius: 0,
     overflow: 'hidden',
     flexShrink: 0,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#1f2937',
   },
   pauseOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -828,7 +861,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rowInfo: { flex: 1, minWidth: 0 },
-  rowTitle: { color: '#111827', fontWeight: '700', fontSize: 14 },
+  rowTitle: { color: '#fff', fontWeight: '700', fontSize: 14 },
   rowArtist: { color: '#6b7280', fontSize: 12, marginTop: 2 },
   rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   rowActions: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
@@ -867,16 +900,21 @@ const styles = StyleSheet.create({
   cancelText: { color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: '500' },
   // ── Grid card ──────────────────────────────────────────────────────────────
   gridCard: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
+    borderRadius: 0,
+    backgroundColor: '#111',
     borderWidth: 2,
     borderColor: '#e5e7eb',
+    shadowColor: '#f97316',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: 4,
   },
   gridArt: {
     width: '100%',
     aspectRatio: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: '#1f2937',
+    overflow: 'hidden',
   },
   gridPlayBtn: {
     ...StyleSheet.absoluteFillObject,
@@ -910,9 +948,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconBtnActive: { backgroundColor: '#60a5fa' },
-  gridInfo: { padding: 10, backgroundColor: '#fff' },
-  gridTitle: { color: '#111827', fontWeight: '600', fontSize: 13 },
-  gridArtist: { color: '#6b7280', fontSize: 11, marginTop: 2 },
+  gridInfo: { padding: 10, backgroundColor: '#111' },
+  gridTitle: { color: '#fff', fontWeight: '600', fontSize: 13 },
+  gridArtist: { color: '#9ca3af', fontSize: 11, marginTop: 2 },
   gridMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
   extraMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   metaText: { color: '#9ca3af', fontSize: 11 },

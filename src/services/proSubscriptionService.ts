@@ -3,6 +3,7 @@ import { supabase } from './supabase';
 
 // Deep-link scheme configured in app.json (scheme: "sypher")
 const APP_SCHEME = 'sypher';
+const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 
 export interface ProSubscription {
   id: string;
@@ -52,7 +53,7 @@ export const proSubscriptionService = {
   },
 
   async startProCheckout(stripeCustomerId: string, plan: 'monthly' | 'yearly', userId?: string, email?: string): Promise<void> {
-    const response = await fetch('/api/create-subscription-session', {
+    const response = await fetch(`${API_BASE}/api/create-subscription-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -79,11 +80,17 @@ export const proSubscriptionService = {
   },
 
   async openPortal(): Promise<void> {
-    const { data: { session } } = await supabase.auth.getSession();
+    let { data: { session } } = await supabase.auth.getSession();
+    // On React Native, getSession() can return null before AsyncStorage has
+    // fully hydrated — refreshSession() forces a reload from storage.
+    if (!session?.access_token) {
+      const { data } = await supabase.auth.refreshSession();
+      session = data.session;
+    }
     const token = session?.access_token;
     if (!token) throw new Error('Not authenticated');
 
-    const response = await fetch('/api/create-portal-session', {
+    const response = await fetch(`${API_BASE}/api/create-portal-session`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -98,11 +105,15 @@ export const proSubscriptionService = {
   },
 
   async activateFromSession(sessionId: string): Promise<void> {
-    const { data: { session } } = await supabase.auth.getSession();
+    let { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      const { data } = await supabase.auth.refreshSession();
+      session = data.session;
+    }
     const token = session?.access_token;
     if (!token) throw new Error('Not authenticated');
 
-    const response = await fetch('/api/activate-subscription', {
+    const response = await fetch(`${API_BASE}/api/activate-subscription`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -116,11 +127,15 @@ export const proSubscriptionService = {
   },
 
   async cancelAtPeriodEnd(subscriptionId: string): Promise<{ currentPeriodEnd: Date }> {
-    const { data: { session } } = await supabase.auth.getSession();
+    let { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      const { data } = await supabase.auth.refreshSession();
+      session = data.session;
+    }
     const token = session?.access_token;
     if (!token) throw new Error('Not authenticated');
 
-    const response = await fetch('/api/cancel-pro-subscription', {
+    const response = await fetch(`${API_BASE}/api/cancel-pro-subscription`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

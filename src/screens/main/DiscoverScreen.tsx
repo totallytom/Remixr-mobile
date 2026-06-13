@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { SwipeStack } from '../../components/music/SwipeStack';
 import { useStore } from '../../store/useStore';
 import type { Track } from '../../store/useStore';
 import { MusicService } from '../../services/musicService';
 import { BoostService } from '../../services/boostService';
+import ChallengeRecordModal from '../../components/music/ChallengeRecordModal';
+import type { ChallengeTrack } from '../../components/music/ChallengeRecordModal';
 
 function shuffleTracks<T>(array: T[]): T[] {
   const out = [...array];
@@ -22,6 +25,7 @@ const Discover: React.FC = () => {
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
   const [availableGenres, setAvailableGenres] = useState<string[]>([]);
   const [isLoadingTracks, setIsLoadingTracks] = useState(false);
+  const [challengeTrack, setChallengeTrack] = useState<ChallengeTrack | null>(null);
 
   useEffect(() => {
     const loadGenres = async () => {
@@ -84,6 +88,10 @@ const Discover: React.FC = () => {
     };
   }, [selectedGenre]);
 
+  const handleChallenge = useCallback((track: Track) => {
+    setChallengeTrack({ id: track.id, title: track.title, artist: track.artist, cover: track.cover });
+  }, []);
+
   const handleSwipe = useCallback(
     (direction: 'left' | 'right', track: Track) => {
       if (direction === 'right') {
@@ -98,7 +106,13 @@ const Discover: React.FC = () => {
   );
 
   return (
-    <View className="flex-1 flex-col px-1 pt-1 pb-2 overflow-hidden">
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
+      <ChallengeRecordModal
+        visible={!!challengeTrack}
+        track={challengeTrack}
+        onClose={() => setChallengeTrack(null)}
+      />
+    <View className="flex-1 flex-col px-1 pt-1 pb-2 overflow-hidden bg-[#121212]">
       {/* Header */}
       <View className="px-1 pt-1 pb-2 shrink-0">
         <Text className="text-xl font-bold text-white">Swipe to discover</Text>
@@ -117,12 +131,14 @@ const Discover: React.FC = () => {
           <SwipeStack
             initialTracks={filteredTracks}
             onSwipe={handleSwipe}
+            onChallenge={handleChallenge}
             genre={selectedGenre}
             resetKey={selectedGenre ?? 'all'}
           />
         )}
       </View>
     </View>
+    </SafeAreaView>
   );
 };
 

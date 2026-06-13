@@ -3,6 +3,21 @@ import { Track, Playlist, Comment } from '../store/useStore';
 import { BoostService } from './boostService';
 import { safeLog } from '../utils/debugUtils';
 
+export interface ChallengeResponse {
+  id: string;
+  sourceTrackId: string;
+  userId: string;
+  audioUrl: string;
+  duration: number;
+  createdAt: Date;
+}
+
+export interface WeeklyChartTrack {
+  track: Track;
+  weeklyPlays: number;
+  rank: number;
+}
+
 export interface CreateTrackData {
   title: string;
   artist: string;
@@ -534,10 +549,12 @@ export class MusicService {
     collaborators?: string[];
   }): Promise<void> {
     try {
+      const { isPublic, ...rest } = updates;
       const { error } = await supabase
         .from('playlists')
         .update({
-          ...updates,
+          ...rest,
+          ...(isPublic !== undefined && { is_public: isPublic }),
           updated_at: new Date().toISOString(),
         })
         .eq('id', playlistId)
@@ -997,21 +1014,83 @@ export class MusicService {
     }
   }
 
-  static async recordPlayHistory(userId: string, trackId: string, playDuration: number = 0, completed: boolean = false): Promise<void> {
-    try {
-      const { error } = await supabase
-        .from('user_play_history')
-        .insert({
-          user_id: userId,
-          track_id: trackId,
-          play_duration: playDuration,
-          completed,
-        });
+  static async setChallengesOpen(trackId: string, userId: string, enabled: boolean): Promise<void> {
+    const { error } = await supabase
+      .from('tracks')
+      .update({ challenges_open: enabled })
+      .eq('id', trackId)
+      .eq('user_id', userId);
+    if (error) throw new Error(error.message);
+  }
 
+  static async getChallengeResponses(sourceTrackId: string): Promise<ChallengeResponse[]> {
+    const { data, error } = await supabase
+      .from('challenge_responses')
+      .select('id, source_track_id, user_id, audio_url, duration, created_at')
+      .eq('source_track_id', sourceTrackId)
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return (data || []).map((r: any) => ({
+      id: r.id,
+      sourceTrackId: r.source_track_id,
+      userId: r.user_id,
+      audioUrl: r.audio_url,
+      duration: r.duration,
+      createdAt: new Date(r.created_at),
+    }));
+  }
+
+  static async submitChallengeResponse(
+    sourceTrackId: string,
+    userId: string,
+    audioUri: string,
+    mimeType: string,
+    duration: number,
+  ): Promise<void> {
+    const ext = mimeType.split('/')[1] || 'm4a';
+    const path = `audio-files/${userId}/challenges/${Date.now()}.${ext}`;
+    const response = await fetch(audioUri);
+    const blob = await response.blob();
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('music-files')
+      .upload(path, blob, { contentType: mimeType, upsert: false });
+    if (uploadError) throw new Error(uploadError.message);
+    const audioUrl = supabase.storage.from('music-files').getPublicUrl(uploadData.path).data.publicUrl;
+
+    const { error: linkError } = await supabase
+      .from('challenge_responses')
+      .insert({ source_track_id: sourceTrackId, user_id: userId, audio_url: audioUrl, duration });
+    if (linkError) throw new Error(linkError.message);
+  }
+
+  static async getWeeklyCharts(genre?: string, limit = 50): Promise<WeeklyChartTrack[]> {
+    try {
+      const { data, error } = await supabase.rpc('get_weekly_charts', {
+        p_limit: limit,
+        p_genre: genre ?? null,
+      });
       if (error) throw new Error(error.message);
+      return (data || []).map((row: any, index: number) => ({
+        track: this.transformTrack(row),
+        weeklyPlays: Number(row.weekly_plays),
+        rank: index + 1,
+      }));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to record play history');
+      throw new Error(error instanceof Error ? error.message : 'Failed to fetch weekly charts');
     }
+  }
+
+  static async recordPlayHistory(userId: string, trackId: string, playDuration: number = 0, completed: boolean = false): Promise<void> {
+    const { error } = await supabase
+      .from('user_play_history')
+      .insert({
+        user_id: userId,
+        track_id: trackId,
+        play_duration: playDuration,
+        completed,
+      });
+
+    if (error) console.warn('[recordPlayHistory]', error.message);
   }
 
   static async getUserPlayHistory(userId: string, limit = 20): Promise<Track[]> {
@@ -1069,6 +1148,7 @@ export class MusicService {
       remixParentId: dbTrack.remix_parent_id,
       versionLabel: dbTrack.version_label,
       remixOpen: dbTrack.remix_open !== false,
+      challengesOpen: dbTrack.challenges_open ?? false,
       createdAt: dbTrack.created_at ? new Date(dbTrack.created_at) : undefined,
       bpm: dbTrack.bpm != null ? Number(dbTrack.bpm) : undefined,
       previewStartSec: dbTrack.preview_start_sec != null ? Number(dbTrack.preview_start_sec) : undefined,

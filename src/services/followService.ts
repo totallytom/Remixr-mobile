@@ -13,10 +13,23 @@ export interface FollowStats {
   isFollowing: boolean;
 }
 
+// Ensures the Supabase session is loaded from AsyncStorage before any
+// RLS-protected write. On React Native, getSession() can return null
+// briefly on startup before AsyncStorage has fully hydrated.
+async function ensureSession(): Promise<void> {
+  let { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    const { data } = await supabase.auth.refreshSession();
+    if (!data.session) throw new Error('Not authenticated');
+  }
+}
+
 export class FollowService {
   // Follow a user
   static async followUser(followerId: string, followingId: string): Promise<void> {
     try {
+      await ensureSession();
+
       // Check if target is private
       const { data: user, error: userError } = await supabase
         .from('users')
@@ -74,6 +87,8 @@ export class FollowService {
   // Unfollow a user
   static async unfollowUser(followerId: string, followingId: string): Promise<void> {
     try {
+      await ensureSession();
+
       // Delete follow relationship
       const { error: unfollowError } = await supabase
         .from('user_follows')
@@ -227,6 +242,7 @@ export class FollowService {
 
   // Request to follow a private account
   static async requestFollow(requesterId: string, targetId: string): Promise<void> {
+    await ensureSession();
     const { error } = await supabase
       .from('follow_requests')
       .insert([{ requester_id: requesterId, target_id: targetId }]);

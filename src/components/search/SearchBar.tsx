@@ -17,14 +17,13 @@ import {
   Calendar,
 } from 'lucide-react-native';
 
-export type SearchCategory = 'all' | 'music' | 'users' | 'concerts';
+export type SearchCategory = 'music' | 'users' | 'concerts';
 
 const CATEGORY_OPTIONS: {
   value: SearchCategory;
   label: string;
   Icon: React.ComponentType<{ size: number; color: string }>;
 }[] = [
-  { value: 'all', label: 'All', Icon: SearchIcon },
   { value: 'music', label: 'Music', Icon: Music },
   { value: 'users', label: 'Users', Icon: User },
   { value: 'concerts', label: 'Concerts', Icon: Calendar },

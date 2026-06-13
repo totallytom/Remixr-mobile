@@ -12,6 +12,7 @@ const MAX_VISIBLE = 3;
 export interface SwipeStackProps {
   initialTracks: Track[];
   onSwipe: (direction: 'left' | 'right', track: Track) => void;
+  onChallenge?: (track: Track) => void;
   fetchMore?: (offset: number) => Promise<Track[]>;
   genre?: string | null;
   resetKey?: string;
@@ -20,6 +21,7 @@ export interface SwipeStackProps {
 export const SwipeStack: React.FC<SwipeStackProps> = ({
   initialTracks,
   onSwipe,
+  onChallenge,
   fetchMore: fetchMoreProp,
   genre,
   resetKey,
@@ -27,6 +29,8 @@ export const SwipeStack: React.FC<SwipeStackProps> = ({
   const [queue, setQueue] = useState<Track[]>(initialTracks);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const isLoadingMoreRef = useRef(false);
+  const isExhaustedRef = useRef(false);
 
   // Reset queue only when resetKey actually changes
   const prevResetKeyRef = useRef<string | undefined>(resetKey);
@@ -34,6 +38,7 @@ export const SwipeStack: React.FC<SwipeStackProps> = ({
     if (resetKey === undefined) return;
     if (prevResetKeyRef.current === resetKey) return;
     prevResetKeyRef.current = resetKey;
+    isExhaustedRef.current = false;
     setQueue(initialTracks);
     setCurrentIndex(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,8 +56,9 @@ export const SwipeStack: React.FC<SwipeStackProps> = ({
   const remainingCount = queue.length - currentIndex;
 
   const loadMore = useCallback(async () => {
-    if (isLoadingMore) return;
+    if (isLoadingMoreRef.current || isExhaustedRef.current) return;
     const offset = queue.length;
+    isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
     try {
       let next: Track[];
@@ -63,17 +69,27 @@ export const SwipeStack: React.FC<SwipeStackProps> = ({
       } else {
         next = await MusicService.getTracks(FETCH_PAGE_SIZE, offset);
       }
-      if (next.length > 0) setQueue(prev => [...prev, ...next]);
+      if (next.length > 0) {
+        setQueue(prev => [...prev, ...next]);
+      } else {
+        isExhaustedRef.current = true;
+      }
     } catch (e) {
       console.error('SwipeStack: failed to fetch more tracks', e);
     } finally {
+      isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
     }
-  }, [queue.length, fetchMoreProp, genre, isLoadingMore]);
+  }, [queue.length, fetchMoreProp, genre]);
 
   useEffect(() => {
-    if (remainingCount <= PRELOAD_THRESHOLD && !isLoadingMore) loadMore();
-  }, [remainingCount, isLoadingMore, loadMore]);
+    if (remainingCount > PRELOAD_THRESHOLD) return;
+    if (!isExhaustedRef.current) { loadMore(); return; }
+    // Source exhausted — recycle swiped tracks in shuffled order
+    const played = queue.slice(0, currentIndex);
+    if (played.length === 0) return;
+    setQueue(prev => [...prev, ...[...played].sort(() => Math.random() - 0.5)]);
+  }, [remainingCount, loadMore, queue, currentIndex]);
 
   const handleSwipe = useCallback(
     (direction: 'left' | 'right', track: Track) => {
@@ -94,12 +110,13 @@ export const SwipeStack: React.FC<SwipeStackProps> = ({
       {/* Card stack — each DiscoveryCard positions itself via StyleSheet.absoluteFill */}
       {visibleTracks.map((track, index) => (
         <DiscoveryCard
-          key={track.id}
+          key={currentIndex + index}
           track={track}
           isTop={index === 0}
           stackIndex={index}
           zIndex={MAX_VISIBLE - index}
           onSwipe={handleSwipe}
+          onChallenge={onChallenge}
         />
       ))}
 
@@ -170,15 +187,15 @@ const styles = StyleSheet.create({
   },
   backBtn: {
     position: 'absolute',
-    bottom: 40,
-    left: 32,
+    top: 28,
+    left: 28,
     zIndex: 20,
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },

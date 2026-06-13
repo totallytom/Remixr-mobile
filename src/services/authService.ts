@@ -527,6 +527,7 @@ export class AuthService {
       delOr('messages', 'sender_id', 'receiver_id'),
       delOr('user_follows', 'follower_id', 'following_id'),
       delOr('follow_requests', 'requester_id', 'target_id'),
+      delOr('playlist_invitations', 'inviter_id', 'invitee_id'),
     ]);
 
     // Step 2: playlist_tracks must be deleted before playlists

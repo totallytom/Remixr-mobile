@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { hap } from '../../utils/haptics';
 import {
   View,
   Text,
@@ -235,8 +236,10 @@ const SignupScreen: React.FC = () => {
                     )}
                   />
                   <TouchableOpacity
-                    onPress={() => setShowPassword(v => !v)}
+                    onPress={() => { hap.tap(); setShowPassword(v => !v); }}
                     style={styles.eyeButton}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? (
                       <EyeOff size={18} color={MUTED} />
@@ -268,10 +271,14 @@ const SignupScreen: React.FC = () => {
                           },
                         ]}
                         onPress={() => {
+                          hap.tap();
                           setSelectedRole(opt.value);
                           setError('');
                         }}
                         activeOpacity={0.8}
+                        accessibilityRole="radio"
+                        accessibilityLabel={`${opt.label}. ${opt.sublabel}`}
+                        accessibilityState={{ checked: active }}
                       >
                         <opt.Icon size={28} color={iconColor} strokeWidth={1.5} />
 

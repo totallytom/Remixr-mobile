@@ -1,21 +1,38 @@
 {
   "expo": {
-    "name": "sypher-mobile",
-    "slug": "remixr",
+    "name": "Remixr",
+    "slug": "Remixr",
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "sypher",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
+    "icon": "./assets/logo.png",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.sypher.mobile"
     },
     "android": {
+      "permissions": ["FOREGROUND_SERVICE", "WAKE_LOCK"],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": "true",
+          "data": [{ "scheme": "https", "host": "www.re-mixed.net"}],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
       "adaptiveIcon": {
-        "backgroundColor": "#0a0a0a"
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#00AFA3"
       },
-      "package": "com.sypher.mobile"
+      "package": "com.sypher.mobile",
+      "versionCode": 3
     },
     "web": {
       "bundler": "metro"
@@ -27,6 +44,9 @@
         "projectId": "f98841a9-e868-4ab5-b17a-d5b86945d6b6"
       }
     },
-    "owner": "totallytom"
+    "owner": "totallytom",
+    "plugins": [
+      "expo-font"
+    ]
   }
 }

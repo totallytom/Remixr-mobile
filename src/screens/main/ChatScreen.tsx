@@ -498,8 +498,10 @@ const ChatScreen: React.FC = () => {
   const statusLabel = !isOnline ? 'Offline' : otherStatus === 'idle' ? 'Idle' : 'Online';
   const dot = statusColor(isOnline, otherStatus);
 
-  // Extra bottom padding when mini player is visible (the player bar sits above the tab bar)
-  const inputPaddingBottom = keyboardVisible ? 8 : player.visible ? 132 : 72;
+  const MINI_PLAYER_HEIGHT = 68;
+  const inputPaddingBottom = keyboardVisible
+    ? 8
+    : player.visible ? MINI_PLAYER_HEIGHT + 4 : 4;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -638,7 +640,7 @@ const ChatScreen: React.FC = () => {
 
 // ── Styles ────────────────────────────────────────────────────────────────
 
-const DARK = '#0a0a14';
+const DARK = '#121212';
 const DARK2 = '#111120';
 const DARK3 = '#1a1a28';
 const BORDER = '#2a2a3a';

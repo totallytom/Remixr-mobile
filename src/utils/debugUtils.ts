@@ -54,9 +54,18 @@ export const hideUUIDs = (text: string): string => {
  */
 export const safeLog = (message: string, data?: any): void => {
   const safeMessage = hideUUIDs(message);
-  if (data) {
-    const safeData = JSON.parse(hideUUIDs(JSON.stringify(data)));
-    console.log(safeMessage, safeData);
+  if (data !== undefined) {
+    let loggable: any;
+    if (data instanceof Error) {
+      loggable = hideUUIDs(`${data.name}: ${data.message}`);
+    } else {
+      try {
+        loggable = JSON.parse(hideUUIDs(JSON.stringify(data)));
+      } catch {
+        loggable = String(data);
+      }
+    }
+    console.log(safeMessage, loggable);
   } else {
     console.log(safeMessage);
   }

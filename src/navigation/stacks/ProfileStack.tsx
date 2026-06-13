@@ -4,6 +4,7 @@ import ProfileScreen from '../../screens/main/ProfileScreen';
 import ProfileByIdScreen from '../../screens/main/ProfileByIdScreen';
 import ArtistScreen from '../../screens/main/ArtistScreen';
 import UpgradeScreen from '../../screens/main/UpgradeScreen';
+import PlaylistsScreen from '../../screens/main/PlaylistsScreen';
 
 export type ProfileStackParamList = {
   Profile: undefined;
@@ -14,6 +15,7 @@ export type ProfileStackParamList = {
     cancelled?: boolean;
     sessionId?: string;
   };
+  Playlists: undefined;
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -29,6 +31,7 @@ export default function ProfileStack() {
         component={UpgradeScreen}
         options={{ animation: 'slide_from_bottom' }}
       />
+      <Stack.Screen name="Playlists" component={PlaylistsScreen} />
     </Stack.Navigator>
   );
 }

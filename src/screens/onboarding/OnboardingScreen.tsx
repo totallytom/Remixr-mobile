@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -298,10 +299,12 @@ const Onboarding: React.FC = () => {
 
   if (!user) {
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
       <View className="flex-1 bg-dark-900 items-center justify-center gap-3">
         <ActivityIndicator size="large" color="rgba(255,255,255,0.4)" />
         <Text className="text-sm text-white/40">Setting up your account…</Text>
       </View>
+      </SafeAreaView>
     );
   }
 
@@ -329,6 +332,7 @@ const Onboarding: React.FC = () => {
       : '.';
 
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
     <ScrollView
       className="flex-1 bg-dark-900"
       contentContainerStyle={{ padding: 20, paddingBottom: 48 }}
@@ -531,6 +535,7 @@ const Onboarding: React.FC = () => {
         genres={genres}
       />
     </ScrollView>
+    </SafeAreaView>
   );
 };
 

@@ -34,3 +34,5 @@ yarn-error.log*
 # Editor
 .vscode/
 .idea/
+
+credentials.json

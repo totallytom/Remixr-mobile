@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -37,6 +38,7 @@ import {
   Camera,
   AtSign,
   MessageCircle,
+  Search,
 } from 'lucide-react-native';
 import { useStore } from '../../store/useStore';
 import { ChatService } from '../../services/chatService';
@@ -57,8 +59,11 @@ import VerifiedBadge from '../../components/VerifiedBadge';
 import { getAvatarUrl } from '../../utils/avatar';
 import { supabase } from '../../services/supabase';
 import type { ProfileStackParamList } from '../../navigation/stacks/ProfileStack';
+import SettingsModal from '../../components/layout/SettingsModal';
 
 type ProfileNavProp = NativeStackNavigationProp<ProfileStackParamList, 'Profile'>;
+
+const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 
 const GENRES = ['Electronic', 'Pop', 'Rock', 'Hip Hop', 'R&B', 'Jazz', 'Classical', 'Country', 'Folk', 'Reggae', 'Blues', 'Funk', 'House', 'Techno', 'Ambient'];
 const FREE_CONCERT_LIMIT = 1;
@@ -74,10 +79,11 @@ const Profile: React.FC = () => {
     playQueue,
     playPlaylist,
     setSettingsOpen,
+    isSettingsOpen,
   } = useStore();
 
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'music' | 'playlists' | 'albums' | 'concerts' | 'bookmark' | 'liked'>('music');
+  const [activeTab, setActiveTab] = useState<'music' | 'albums' | 'concerts' | 'bookmark' | 'liked'>('music');
   const [followStats, setFollowStats] = useState<FollowStats>({ followers: 0, following: 0, isFollowing: false });
 
   const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
@@ -124,6 +130,8 @@ const Profile: React.FC = () => {
   const [followingList, setFollowingList] = useState<any[]>([]);
   const [isFollowersLoading, setIsFollowersLoading] = useState(false);
   const [isFollowingListLoading, setIsFollowingListLoading] = useState(false);
+  const [followersSearch, setFollowersSearch] = useState('');
+  const [followingSearch, setFollowingSearch] = useState('');
 
   const [bookmarks, setBookmarks] = useState<Track[]>([]);
   const [isLoadingBookmarks, setIsLoadingBookmarks] = useState(false);
@@ -394,7 +402,7 @@ const Profile: React.FC = () => {
   const handleStripeOnboard = async () => {
     if (!currentUser) return;
     try {
-      const response = await fetch('/api/create-stripe-account', {
+      const response = await fetch(`${API_BASE}/api/create-stripe-account`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.id }),
@@ -576,34 +584,41 @@ const Profile: React.FC = () => {
 
   if (!isAuthenticated) {
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
       <View className="flex-1 items-center justify-center p-6 gap-4">
         <Lock size={64} color="#6b7280" />
         <Text className="text-2xl font-bold text-white">Authentication Required</Text>
         <Text className="text-gray-400 text-center">You need to sign in to view profiles.</Text>
       </View>
+      </SafeAreaView>
     );
   }
 
   if (isLoading) {
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
       <View className="flex-1 items-center justify-center gap-3">
         <ActivityIndicator size="large" color="#7c3aed" />
         <Text className="text-gray-400">Loading profile...</Text>
       </View>
+      </SafeAreaView>
     );
   }
 
   if (!currentUser) {
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
       <View className="flex-1 items-center justify-center">
         <Text className="text-gray-400">User not found</Text>
       </View>
+      </SafeAreaView>
     );
   }
 
   const externalLinks = ((currentUser as any).externalLinks ?? []).filter(Boolean).slice(0, 3) as string[];
 
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
     <ScrollView className="flex-1 bg-dark-900" contentContainerStyle={{ paddingBottom: 32 }}>
 
       {/* Profile Header */}
@@ -691,6 +706,13 @@ const Profile: React.FC = () => {
           >
             <Settings size={20} color="white" />
           </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Playlists')}
+            className="p-2.5 rounded-full bg-dark-700"
+          >
+            <ListMusic size={20} color="white" />
+          </TouchableOpacity>
         </View>
 
         {/* External links */}
@@ -758,7 +780,6 @@ const Profile: React.FC = () => {
         <View className="flex-row gap-1 bg-dark-800 rounded-lg p-1">
           {[
             { key: 'music', label: 'Music' },
-            { key: 'playlists', label: 'Playlists' },
             { key: 'albums', label: currentUser.role === 'musician' ? 'Albums' : 'Preferences' },
             ...(currentUser.role === 'musician' ? [{ key: 'concerts', label: 'Concerts' }] : []),
             { key: 'bookmark', label: 'Bookmarks' },
@@ -818,45 +839,6 @@ const Profile: React.FC = () => {
                   ))}
                 </View>
               </ScrollView>
-            )}
-          </View>
-        )}
-
-        {/* ── Playlists Tab ── */}
-        {activeTab === 'playlists' && (
-          <View>
-            <View className="flex-row items-center gap-2 mb-4">
-              <ListMusic size={20} color="#7c3aed" />
-              <Text className="text-xl font-bold text-white">My Playlists</Text>
-            </View>
-            {isLoadingPlaylists ? (
-              <View className="flex-row items-center justify-center py-8 gap-2">
-                <ActivityIndicator size="small" color="#a78bfa" />
-                <Text className="text-gray-400">Loading playlists...</Text>
-              </View>
-            ) : playlists.length === 0 ? (
-              <View className="items-center py-12">
-                <Text className="text-gray-400 mb-2">No playlists created yet.</Text>
-                <Text className="text-gray-500 text-sm">Create your first playlist to get started!</Text>
-              </View>
-            ) : (
-              <View className="gap-3">
-                {playlists.map(playlist => (
-                  <PlaylistCard
-                    key={playlist.id}
-                    playlist={playlist}
-                    onPlay={playPlaylist}
-                    onEdit={() => {}}
-                    onDelete={async (id) => {
-                      try {
-                        await MusicService.deletePlaylist(id, currentUser.id);
-                        setPlaylists(prev => prev.filter(p => p.id !== id));
-                      } catch (e) { console.error('Failed to delete playlist:', e); }
-                    }}
-                    showActions
-                  />
-                ))}
-              </View>
             )}
           </View>
         )}
@@ -1361,73 +1343,165 @@ const Profile: React.FC = () => {
       </Modal>
 
       {/* ── Followers Modal ── */}
-      <Modal visible={showFollowersModal} transparent animationType="slide" onRequestClose={() => setShowFollowersModal(false)}>
-        <View className="flex-1 bg-black/70 justify-end">
-          <View className="bg-dark-800 rounded-t-2xl" style={{ maxHeight: '60%' }}>
-            <View className="flex-row items-center justify-between px-5 py-4 border-b border-dark-700/60">
-              <Text className="text-base font-semibold text-white">Followers</Text>
-              <TouchableOpacity onPress={() => setShowFollowersModal(false)} className="p-1.5">
-                <X size={18} color="#6b7280" />
+      <Modal
+        visible={showFollowersModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setShowFollowersModal(false); setFollowersSearch(''); }}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#121212', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '88%' }}>
+            <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 4 }}>
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 }}>
+              <View>
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>Followers</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, marginTop: 2 }}>{followStats.followers} people follow you</Text>
+              </View>
+              <TouchableOpacity onPress={() => { setShowFollowersModal(false); setFollowersSearch(''); }} style={{ padding: 6 }}>
+                <X size={22} color="rgba(255,255,255,0.6)" />
               </TouchableOpacity>
             </View>
-            <ScrollView className="flex-1 px-4 py-3">
-              {isFollowersLoading ? (
-                <View className="items-center py-8"><ActivityIndicator size="small" color="#a78bfa" /></View>
-              ) : followersList.length === 0 ? (
-                <Text className="text-center text-gray-400 py-8">No followers yet.</Text>
-              ) : (
-                followersList.map(f => (
-                  <View key={f.id} className="flex-row items-center justify-between gap-3 py-3 border-b border-dark-700/40">
-                    <View className="flex-row items-center gap-3 flex-1 min-w-0">
-                      <Image source={{ uri: getAvatarUrl(f.avatar) }} className="w-8 h-8 rounded-full flex-shrink-0" accessibilityLabel={f.username} />
-                      <Text className="text-white font-medium flex-1" numberOfLines={1}>{f.username}</Text>
-                      <VerifiedBadge verified={f.isVerified || f.isVerifiedArtist} size={16} />
-                    </View>
-                    <TouchableOpacity onPress={() => handleRemoveFollower(f.id)} className="px-3 py-1.5 rounded-lg bg-red-500/10">
-                      <Text className="text-red-400 text-sm font-medium">Remove</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 12, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 8, paddingHorizontal: 12, height: 40 }}>
+              <Search size={16} color="rgba(255,255,255,0.5)" />
+              <TextInput
+                value={followersSearch}
+                onChangeText={setFollowersSearch}
+                placeholder="Search followers"
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                style={{ flex: 1, marginLeft: 8, color: '#fff', fontSize: 14 }}
+                autoCapitalize="none"
+              />
+              {followersSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setFollowersSearch('')}>
+                  <X size={14} color="rgba(255,255,255,0.4)" />
+                </TouchableOpacity>
               )}
-            </ScrollView>
+            </View>
+            {isFollowersLoading ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                <ActivityIndicator size="large" color="#a78bfa" />
+                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Loading…</Text>
+              </View>
+            ) : (
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+                {followersList.filter(f => !followersSearch || f.username?.toLowerCase().includes(followersSearch.toLowerCase())).length === 0 ? (
+                  <View style={{ alignItems: 'center', paddingTop: 56 }}>
+                    <Users size={48} color="#374151" strokeWidth={1.5} />
+                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginTop: 16 }}>
+                      {followersSearch ? 'No results' : 'No followers yet'}
+                    </Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginTop: 6 }}>
+                      {followersSearch ? `No one matches "${followersSearch}"` : 'Share your profile to get followers'}
+                    </Text>
+                  </View>
+                ) : (
+                  followersList
+                    .filter(f => !followersSearch || f.username?.toLowerCase().includes(followersSearch.toLowerCase()))
+                    .map(f => (
+                      <View key={f.id} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 12 }}>
+                        <Image source={{ uri: getAvatarUrl(f.avatar) }} style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: '#1f2937', flexShrink: 0 }} accessibilityLabel={f.username} />
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }} numberOfLines={1}>{f.username}</Text>
+                            <VerifiedBadge verified={f.isVerified || f.isVerifiedArtist} size={13} />
+                          </View>
+                          {f.role ? <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 1, textTransform: 'capitalize' }}>{f.role}</Text> : null}
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => handleRemoveFollower(f.id)}
+                          style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+                        >
+                          <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600' }}>Remove</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))
+                )}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
 
       {/* ── Following Modal ── */}
-      <Modal visible={showFollowingModal} transparent animationType="slide" onRequestClose={() => setShowFollowingModal(false)}>
-        <View className="flex-1 bg-black/70 justify-end">
-          <View className="bg-dark-800 rounded-t-2xl" style={{ maxHeight: '60%' }}>
-            <View className="flex-row items-center justify-between px-5 py-4 border-b border-dark-700/60">
-              <Text className="text-base font-semibold text-white">Following</Text>
-              <TouchableOpacity onPress={() => setShowFollowingModal(false)} className="p-1.5">
-                <X size={18} color="#6b7280" />
+      <Modal
+        visible={showFollowingModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setShowFollowingModal(false); setFollowingSearch(''); }}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: '#121212', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '88%' }}>
+            <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 4 }}>
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 }}>
+              <View>
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>Following</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, marginTop: 2 }}>You follow {followStats.following} people</Text>
+              </View>
+              <TouchableOpacity onPress={() => { setShowFollowingModal(false); setFollowingSearch(''); }} style={{ padding: 6 }}>
+                <X size={22} color="rgba(255,255,255,0.6)" />
               </TouchableOpacity>
             </View>
-            <ScrollView className="flex-1 px-4 py-3">
-              {isFollowingListLoading ? (
-                <View className="items-center py-8"><ActivityIndicator size="small" color="#a78bfa" /></View>
-              ) : followingList.length === 0 ? (
-                <Text className="text-center text-gray-400 py-8">Not following anyone yet.</Text>
-              ) : (
-                followingList.map(f => (
-                  <View key={f.id} className="flex-row items-center justify-between gap-3 py-3 border-b border-dark-700/40">
-                    <View className="flex-row items-center gap-3 flex-1 min-w-0">
-                      <Image source={{ uri: getAvatarUrl(f.avatar) }} className="w-8 h-8 rounded-full flex-shrink-0" accessibilityLabel={f.username} />
-                      <Text className="text-white font-medium flex-1" numberOfLines={1}>{f.username}</Text>
-                      <VerifiedBadge verified={f.isVerified || f.isVerifiedArtist} size={16} />
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => handleUnfollowFromFollowingList(f.id)}
-                      className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg bg-dark-600"
-                    >
-                      <UserMinus size={14} color="#9ca3af" />
-                      <Text className="text-gray-400 text-sm">Unfollow</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 12, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 8, paddingHorizontal: 12, height: 40 }}>
+              <Search size={16} color="rgba(255,255,255,0.5)" />
+              <TextInput
+                value={followingSearch}
+                onChangeText={setFollowingSearch}
+                placeholder="Search following"
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                style={{ flex: 1, marginLeft: 8, color: '#fff', fontSize: 14 }}
+                autoCapitalize="none"
+              />
+              {followingSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setFollowingSearch('')}>
+                  <X size={14} color="rgba(255,255,255,0.4)" />
+                </TouchableOpacity>
               )}
-            </ScrollView>
+            </View>
+            {isFollowingListLoading ? (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                <ActivityIndicator size="large" color="#a78bfa" />
+                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Loading…</Text>
+              </View>
+            ) : (
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+                {followingList.filter(f => !followingSearch || f.username?.toLowerCase().includes(followingSearch.toLowerCase())).length === 0 ? (
+                  <View style={{ alignItems: 'center', paddingTop: 56 }}>
+                    <UserIcon size={48} color="#374151" strokeWidth={1.5} />
+                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginTop: 16 }}>
+                      {followingSearch ? 'No results' : 'Not following anyone yet'}
+                    </Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginTop: 6 }}>
+                      {followingSearch ? `No one matches "${followingSearch}"` : 'Discover artists to follow'}
+                    </Text>
+                  </View>
+                ) : (
+                  followingList
+                    .filter(f => !followingSearch || f.username?.toLowerCase().includes(followingSearch.toLowerCase()))
+                    .map(f => (
+                      <View key={f.id} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 12 }}>
+                        <Image source={{ uri: getAvatarUrl(f.avatar) }} style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: '#1f2937', flexShrink: 0 }} accessibilityLabel={f.username} />
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }} numberOfLines={1}>{f.username}</Text>
+                            <VerifiedBadge verified={f.isVerified || f.isVerifiedArtist} size={13} />
+                          </View>
+                          {f.role ? <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 1, textTransform: 'capitalize' }}>{f.role}</Text> : null}
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => handleUnfollowFromFollowingList(f.id)}
+                          style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+                        >
+                          <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600' }}>Unfollow</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))
+                )}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -1510,6 +1584,8 @@ const Profile: React.FC = () => {
       />
 
     </ScrollView>
+    <SettingsModal isOpen={isSettingsOpen ?? false} />
+    </SafeAreaView>
   );
 };
 

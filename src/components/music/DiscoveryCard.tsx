@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, Animated, PanResponder } from 'react-native';
 import { Audio } from 'expo-av';
-import { Play, Pause, Star } from 'lucide-react-native';
+import { Play, Pause, Star, Mic } from 'lucide-react-native';
 
 // ─── Track type ───────────────────────────────────────────────────────────────
 export interface Track {
@@ -14,6 +14,7 @@ export interface Track {
   duration?: number;
   genre?: string;
   boosted?: boolean;
+  challengesOpen?: boolean;
   previewStartSec?: number;
   previewDurationSec?: number;
 }
@@ -21,6 +22,7 @@ export interface Track {
 interface DiscoveryCardProps {
   track: Track;
   onSwipe: (direction: 'left' | 'right', track: Track) => void;
+  onChallenge?: (track: Track) => void;
   isTop?: boolean;
   stackIndex?: number;
   zIndex?: number;
@@ -34,6 +36,7 @@ const DEFAULT_TRACK_COVER = 'https://images.unsplash.com/photo-1493225457124-a3e
 const DiscoveryCardComponent: React.FC<DiscoveryCardProps> = ({
   track,
   onSwipe,
+  onChallenge,
   isTop = true,
   stackIndex = 0,
   zIndex: zIndexProp,
@@ -120,19 +123,24 @@ const DiscoveryCardComponent: React.FC<DiscoveryCardProps> = ({
     }
   }, [track.audioUrl, isPreviewPlaying, previewStart, previewEnd]);
 
-  // ── Swipe callback ────────────────────────────────────────────────────────
+  // Keep refs so the pan responder (created once) always reads current values
+  const isTopRef = useRef(isTop);
+  useEffect(() => { isTopRef.current = isTop; }, [isTop]);
+
+  const triggerSwipeRef = useRef<(direction: 'left' | 'right') => void>(() => {});
   const triggerSwipe = useCallback(
     (direction: 'left' | 'right') => {
       onSwipe(direction, track);
     },
     [onSwipe, track],
   );
+  useEffect(() => { triggerSwipeRef.current = triggerSwipe; }, [triggerSwipe]);
 
   // ── Pan responder ─────────────────────────────────────────────────────────
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => isTop,
-      onMoveShouldSetPanResponder: () => isTop,
+      onStartShouldSetPanResponder: () => isTopRef.current,
+      onMoveShouldSetPanResponder: () => isTopRef.current,
       onPanResponderMove: (_, { dx }) => {
         if (!isExiting.current) translateX.setValue(dx);
       },
@@ -151,7 +159,7 @@ const DiscoveryCardComponent: React.FC<DiscoveryCardProps> = ({
             useNativeDriver: true,
             stiffness: 300,
             damping: 30,
-          }).start(() => triggerSwipe(direction));
+          }).start(() => triggerSwipeRef.current(direction));
         } else {
           Animated.spring(translateX, {
             toValue: 0,
@@ -220,7 +228,12 @@ const DiscoveryCardComponent: React.FC<DiscoveryCardProps> = ({
           </View>
         )}
 
-        {/* Info gradient overlay */}
+        {/* Gradient overlay — stacked translucent layers simulate a bottom fade */}
+        <View style={styles.gradientLayer1} pointerEvents="none" />
+        <View style={styles.gradientLayer2} pointerEvents="none" />
+        <View style={styles.gradientLayer3} pointerEvents="none" />
+
+        {/* Info overlay */}
         <View style={styles.infoOverlay}>
           <Text style={styles.trackTitle} numberOfLines={1}>{track.title}</Text>
           {track.artist ? (
@@ -230,6 +243,17 @@ const DiscoveryCardComponent: React.FC<DiscoveryCardProps> = ({
             <Text style={styles.trackGenre} numberOfLines={1}>{track.genre}</Text>
           ) : null}
         </View>
+
+        {/* Challenge button — only on tracks where uploader opted in */}
+        {isTop && track.challengesOpen && (
+          <TouchableOpacity
+            onPress={() => onChallenge?.(track)}
+            style={styles.challengeBtn}
+            activeOpacity={0.8}
+          >
+            <Mic size={22} color="#fff" />
+          </TouchableOpacity>
+        )}
 
         {/* Preview button */}
         {isTop && track.audioUrl && (
@@ -328,6 +352,30 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '900',
   },
+  gradientLayer1: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '35%',
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+  gradientLayer2: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '25%',
+    backgroundColor: 'rgba(0,0,0,0.30)',
+  },
+  gradientLayer3: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '18%',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
   infoOverlay: {
     position: 'absolute',
     bottom: 0,
@@ -335,28 +383,35 @@ const styles = StyleSheet.create({
     right: 0,
     padding: 20,
     paddingBottom: 24,
-    backgroundColor: 'transparent',
   },
   trackTitle: {
     fontSize: 22,
     fontWeight: '700',
     color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
   },
   trackArtist: {
     fontSize: 16,
-    color: 'rgba(255,255,255,0.8)',
+    color: 'rgba(255,255,255,0.85)',
     marginTop: 2,
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
   },
   trackGenre: {
     fontSize: 13,
     color: '#a78bfa',
     marginTop: 2,
+  },
+  challengeBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 10,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(124,58,237,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(167,139,250,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   previewBtn: {
     position: 'absolute',
@@ -366,7 +421,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.3)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
     alignItems: 'center',
