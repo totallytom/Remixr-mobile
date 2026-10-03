@@ -1,7 +1,26 @@
 import { supabase } from './supabase';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { User } from '../store/useStore';
 import { DEFAULT_AVATAR_URL } from '../utils/avatar';
 import { storage, STORAGE_KEYS } from '../platform/storage';
+import { appError } from '../utils/appError';
+
+/**
+ * The signed-in auth user's id + email, kept in sync with the Supabase
+ * session. Used by transformUser for the user's own email, because
+ * public.users no longer stores emails (privacy).
+ */
+let signedInAuthUser: { id: string; email: string } | null = null;
+const rememberAuthUser = (u?: { id: string; email?: string | null } | null) => {
+  signedInAuthUser = u?.id ? { id: u.id, email: u.email ?? '' } : null;
+};
+supabase.auth.getSession().then(({ data }) => rememberAuthUser(data.session?.user));
+supabase.auth.onAuthStateChange((_event, session) => rememberAuthUser(session?.user));
+/** The signed-in user's email if `id` is them, otherwise '' (other users' emails are private). */
+const ownEmailFor = (id: string): string => {
+  const me = signedInAuthUser;
+  return me && me.id === id ? me.email : '';
+};
 
 export interface AuthError {
   message: string;
@@ -15,6 +34,8 @@ export interface RegisterData {
   role: 'musician' | 'consumer';
   artistName?: string;
   bio?: string;
+  /** 'YYYY-MM-DD'. Required: the database rejects signups without it (COPPA). */
+  dateOfBirth: string;
 }
 
 export interface LoginData {
@@ -66,6 +87,7 @@ export class AuthService {
         .eq('id', userId)
         .maybeSingle();
       if (!error && profileData) {
+        rememberAuthUser(session.user);
         return this.transformUser(profileData, session.user.email_confirmed_at);
       }
       if (error) {
@@ -85,12 +107,14 @@ export class AuthService {
         email: data.email,
         password: data.password,
         options: {
-          emailRedirectTo: "https://app.re-mixed.net/onboarding",
+          emailRedirectTo: "https://www.re-mixed.net/onboarding",
           data: {
             username: data.username,
             role: desiredRole,
             artist_name: data.artistName,
             bio: data.bio,
+            // Checked and stored privately by the enforce_signup_age trigger.
+            date_of_birth: data.dateOfBirth,
           }
         }
       });
@@ -100,7 +124,7 @@ export class AuthService {
       }
 
       if (!authData.user) {
-        throw new Error('Failed to create user');
+        throw appError('errors.account.createUser');
       }
 
       // Auto-confirm the user (for development/production convenience)
@@ -130,7 +154,7 @@ export class AuthService {
         console.error('[register] users INSERT failed:', profileError.message, profileError.code);
         // Check if it's the row-level security policy error and replace with user-friendly message
         if (profileError.message && profileError.message.includes('new row violates row-level security policy')) {
-          throw new Error('The Supabase link has been sent to your email');
+          throw appError('auth.errors.checkEmailConfirm');
         }
         throw new Error(profileError.message);
       }
@@ -145,12 +169,14 @@ export class AuthService {
           .select()
           .single();
         if (!correctedErr && corrected) {
+          rememberAuthUser(authData.user);
           const correctedUser = this.transformUser(corrected, authData.user.email_confirmed_at);
           await this.setCachedProfile(correctedUser);
           return correctedUser;
         }
       }
 
+      rememberAuthUser(authData.user);
       const newUser = this.transformUser(profileData, authData.user.email_confirmed_at);
       // Pre-cache so the onAuthStateChange background fetch (which races the INSERT)
       // finds the profile immediately rather than getting null and clearing auth state.
@@ -159,9 +185,9 @@ export class AuthService {
     } catch (error) {
       // Also check for the RLS error in the general catch block
       if (error instanceof Error && error.message.includes('new row violates row-level security policy')) {
-        throw new Error('The Supabase link has been sent to your email');
+        throw appError('auth.errors.checkEmailConfirm');
       }
-      throw new Error(error instanceof Error ? error.message : 'Registration failed');
+      throw new Error(error instanceof Error ? error.message : appError('auth.signup.failed').message);
     }
   }
 
@@ -179,7 +205,7 @@ export class AuthService {
       }
 
       if (!authData.user) {
-        throw new Error('Login failed');
+        throw appError('auth.login.failed');
       }
 
       // Get user profile
@@ -196,6 +222,7 @@ export class AuthService {
       }
 
       if (profileData) {
+        rememberAuthUser(authData.user);
         return this.transformUser(profileData, authData.user.email_confirmed_at);
       }
 
@@ -230,12 +257,13 @@ export class AuthService {
       }
       
       if (!newProfileData) {
-        throw new Error('User profile not found. Please contact support.');
+        throw appError('errors.account.profileMissing');
       }
 
+      rememberAuthUser(authData.user);
       return this.transformUser(newProfileData, authData.user.email_confirmed_at);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Login failed');
+      throw new Error(error instanceof Error ? error.message : appError('auth.login.failed').message);
     }
   }
 
@@ -298,6 +326,7 @@ export class AuthService {
         return null;
       }
 
+      rememberAuthUser(session.user);
       const user = this.transformUser(profileData, session.user.email_confirmed_at);
       await this.setCachedProfile(user);
       return user;
@@ -361,25 +390,25 @@ export class AuthService {
 
       return this.transformUser(data);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Profile update failed');
+      throw new Error(error instanceof Error ? error.message : appError('errors.account.profileUpdate').message);
     }
   }
 
   static async changePassword(currentPassword: string, newPassword: string): Promise<void> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.email) throw new Error('No authenticated user');
+      if (!user?.email) throw appError('errors.account.notSignedIn');
 
       const { error: verifyError } = await supabase.auth.signInWithPassword({
         email: user.email,
         password: currentPassword,
       });
-      if (verifyError) throw new Error('Current password is incorrect');
+      if (verifyError) throw appError('errors.account.wrongPassword');
 
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Password change failed');
+      throw new Error(error instanceof Error ? error.message : appError('errors.account.passwordChange').message);
     }
   }
 
@@ -393,7 +422,7 @@ export class AuthService {
         throw new Error(error.message);
       }
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Email change failed');
+      throw new Error(error instanceof Error ? error.message : appError('errors.account.emailChange').message);
     }
   }
 
@@ -412,7 +441,7 @@ export class AuthService {
       }
 
       if (existingUser) {
-        throw new Error('Username is already taken');
+        throw appError('errors.account.usernameTaken');
       }
 
       // Update username
@@ -429,7 +458,7 @@ export class AuthService {
 
       return this.transformUser(data);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Username change failed');
+      throw new Error(error instanceof Error ? error.message : appError('errors.account.usernameChange').message);
     }
   }
 
@@ -448,14 +477,17 @@ export class AuthService {
 
       return this.transformUser(data);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to update privacy settings');
+      throw new Error(error instanceof Error ? error.message : appError('errors.account.privacy').message);
     }
   }
 
   /** Send password reset email. Link in email redirects to app /reset-password with recovery token in hash. */
   static async resetPassword(email: string): Promise<void> {
     try {
-      const redirectTo = `${typeof window !== 'undefined' ? window.location.origin : ''}/reset-password`;
+      // The website's reset page: works wherever the email is opened (phone or
+      // computer). `window.location` doesn't exist in React Native, so the old
+      // origin-based link threw before any email was sent.
+      const redirectTo = 'https://www.re-mixed.net/reset-password';
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo
       });
@@ -464,7 +496,7 @@ export class AuthService {
         throw new Error(error.message);
       }
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Password reset failed');
+      throw new Error(error instanceof Error ? error.message : appError('auth.login.resetFailed').message);
     }
   }
 
@@ -479,7 +511,7 @@ export class AuthService {
         throw new Error(error.message);
       }
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to set new password');
+      throw new Error(error instanceof Error ? error.message : appError('auth.reset.failed').message);
     }
   }
 
@@ -492,78 +524,26 @@ export class AuthService {
       if (error) throw new Error(error.message);
       return (data || []).map((u) => this.transformUser(u));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'User search failed');
+      throw new Error(error instanceof Error ? error.message : appError('errors.account.userSearch').message);
     }
   }
 
+  // All deletion happens server-side in the delete-account Edge Function (service
+  // role): deleting table by table from the client was silently skipped by RLS.
   static async deleteAccount(userId: string): Promise<void> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session || session.user.id !== userId) {
-      throw new Error('No active session. Please log in again before deleting your account.');
+      throw appError('errors.account.sessionExpired');
     }
 
-    const warn = (table: string, msg: string) =>
-      console.warn(`[deleteAccount] ${table}:`, msg);
-
-    const del = async (table: string, column: string) => {
-      const { error } = await supabase.from(table).delete().eq(column, userId);
-      if (error) warn(table, error.message);
-    };
-
-    const delOr = async (table: string, col1: string, col2: string) => {
-      const { error } = await supabase
-        .from(table)
-        .delete()
-        .or(`${col1}.eq.${userId},${col2}.eq.${userId}`);
-      if (error) warn(table, error.message);
-    };
-
-    // Step 1: activity/junction tables that reference user + other entities
-    await Promise.all([
-      del('user_play_history', 'user_id'),
-      del('bookmarks', 'user_id'),
-      del('comments', 'user_id'),
-      del('posts', 'user_id'),
-      delOr('messages', 'sender_id', 'receiver_id'),
-      delOr('user_follows', 'follower_id', 'following_id'),
-      delOr('follow_requests', 'requester_id', 'target_id'),
-      delOr('playlist_invitations', 'inviter_id', 'invitee_id'),
-    ]);
-
-    // Step 2: playlist_tracks must be deleted before playlists
-    const { data: userPlaylists } = await supabase
-      .from('playlists')
-      .select('id')
-      .eq('created_by', userId);
-
-    if (userPlaylists?.length) {
-      const ids = userPlaylists.map((p: { id: string }) => p.id);
-      const { error } = await supabase.from('playlist_tracks').delete().in('playlist_id', ids);
-      if (error) warn('playlist_tracks', error.message);
-    }
-
-    // Step 3: user-owned content
-    await Promise.all([
-      del('playlists', 'created_by'),
-      del('tracks', 'user_id'),
-      del('albums', 'user_id'),
-      del('concerts', 'user_id'),
-    ]);
-
-    // Step 4: profile row
-    const { error: profileError } = await supabase.from('users').delete().eq('id', userId);
-    if (profileError) {
-      // Profile deletion is critical — surface this to the user
-      throw new Error(`Failed to delete account: ${profileError.message}`);
-    }
-
-    // Step 5: delete the auth.users record via Edge Function (requires service-role key).
-    // Failure here is non-fatal — profile and all data are already gone.
-    const { error: fnError } = await supabase.functions.invoke('delete-account', {
-      method: 'POST',
-    });
-    if (fnError) {
-      console.warn('[deleteAccount] auth user deletion failed:', fnError.message);
+    const { error } = await supabase.functions.invoke('delete-account', { method: 'POST' });
+    if (error) {
+      let message = error.message;
+      if (error instanceof FunctionsHttpError) {
+        const payload = await error.context.json().catch(() => null);
+        if (payload?.error) message = payload.error;
+      }
+      throw new Error(message || 'Account deletion failed. Please try again.');
     }
 
     await supabase.auth.signOut({ scope: 'local' });
@@ -639,7 +619,9 @@ export class AuthService {
     return {
       id: dbUser.id,
       username: dbUser.username,
-      email: dbUser.email,
+      // public.users no longer stores emails; the signed-in user's own email
+      // comes from their auth session. Other users' emails stay private.
+      email: dbUser.email ?? ownEmailFor(dbUser.id),
       avatar: dbUser.avatar,
       followers: dbUser.followers,
       following: dbUser.following,

@@ -11,7 +11,7 @@ export default function PagerHeader() {
   const navigation = useNavigation<PagerNav>();
 
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 }}>
+    <View style={{ flexDirection: 'row', backgroundColor: '#121212', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 }}>
       {/* Logo + wordmark */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <Image
@@ -19,7 +19,7 @@ export default function PagerHeader() {
           style={{ width: 36, height: 36, borderRadius: 18 }}
           resizeMode="cover"
         />
-        <Text style={{ color: '#fff', fontSize: 28, fontWeight: '700' }}>Remixr</Text>
+        <Text style={{ color: 'white', fontSize: 28, fontFamily: 'jetbrains_mono_regular' }}>Re-Mixed</Text>
       </View>
 
       {/* Action buttons */}
@@ -28,7 +28,7 @@ export default function PagerHeader() {
           onPress={() => navigation.navigate('Charts')}
           style={{
             width: 38, height: 38, borderRadius: 19,
-            backgroundColor: 'rgba(234,179,8,0.15)',
+            backgroundColor: '#121212',
             borderWidth: 1, borderColor: 'rgba(234,179,8,0.45)',
             alignItems: 'center', justifyContent: 'center',
           }}

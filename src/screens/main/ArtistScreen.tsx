@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '../../theme'
 import {
   View,
   Text,
@@ -39,16 +40,24 @@ import { ConcertService } from '../../services/concertService';
 import type { Concert } from '../../services/concertService';
 import { AlbumService } from '../../services/albumService';
 import type { Album } from '../../services/albumService';
+import BuyTicketButton from '../../components/music/BuyTicketButton';
 import type { Track, Playlist } from '../../store/useStore';
 import PlaylistCard from '../../components/music/PlaylistCard';
 import TrackCard from '../../components/music/TrackCard';
 import AlbumCard from '../../components/music/AlbumCard';
 import VerifiedBadge from '../../components/VerifiedBadge';
 import { getAvatarUrl } from '../../utils/avatar';
+import { formatTicketPrice, openTicketUrl, thirdPartyTicketsNote } from '../../utils/concerts';
+import { requireAuth } from '../../components/auth/GuestPrompt';
+import { formatConcertDate } from '../../utils/dateLocale';
+import { useTranslation } from 'react-i18next';
+import { genreLabel } from '../../utils/genres';
+import EarlyEarCard from '../../components/earlyEar/EarlyEarCard';
 
 type ArtistRouteParams = { artistId: string };
 
 const ArtistScreen: React.FC = () => {
+  const { t } = useTranslation();
   const route = useRoute<RouteProp<{ Artist: ArtistRouteParams }, 'Artist'>>();
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const { artistId } = route.params;
@@ -147,7 +156,8 @@ const ArtistScreen: React.FC = () => {
 
   // ── Follow / Unfollow ─────────────────────────────────────────────────────
   const handleFollowToggle = useCallback(async () => {
-    if (!currentUser || !profile) return;
+    if (!currentUser) { requireAuth('follow'); return; }
+    if (!profile) return;
     setIsFollowLoading(true);
     try {
       if (followStats.isFollowing) {
@@ -166,6 +176,7 @@ const ArtistScreen: React.FC = () => {
 
   // ── Message ───────────────────────────────────────────────────────────────
   const handleMessage = useCallback(() => {
+    if (!requireAuth('chat')) return;
     (navigation.getParent() as any)?.navigate('ChatTab', {
       screen: 'Chat',
       params: { openUserId: artistId },
@@ -199,10 +210,10 @@ const ArtistScreen: React.FC = () => {
   // ── Loading / error states ────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <View className="flex-1 items-center justify-center gap-3 bg-dark-900">
-        <ActivityIndicator size="large" color="#7c3aed" />
-        <Text className="text-gray-400">Loading profile...</Text>
+        <ActivityIndicator size="large" color="#000000" />
+        <Text className="text-black">{t('profile.loading')}</Text>
       </View>
       </SafeAreaView>
     );
@@ -210,9 +221,9 @@ const ArtistScreen: React.FC = () => {
 
   if (!profile) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <View className="flex-1 items-center justify-center bg-dark-900">
-        <Text className="text-gray-400">Artist not found</Text>
+        <Text className="text-gray-400">{t('profileView.artistNotFound')}</Text>
       </View>
       </SafeAreaView>
     );
@@ -222,13 +233,13 @@ const ArtistScreen: React.FC = () => {
   const isMusicianProfile = profile.role === 'musician';
 
   const tabs = [
-    { key: 'music', label: 'Music' },
-    { key: 'playlists', label: 'Playlists' },
-    ...(isMusicianProfile ? [{ key: 'albums', label: 'Albums' }, { key: 'concerts', label: 'Concerts' }] : []),
+    { key: 'music', label: t('profile.tabs.music') },
+    { key: 'playlists', label: t('profileView.playlists') },
+    ...(isMusicianProfile ? [{ key: 'albums', label: t('profile.tabs.albums') }, { key: 'concerts', label: t('profile.tabs.concerts') }] : []),
   ] as { key: typeof activeTab; label: string }[];
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
     <ScrollView className="flex-1 bg-dark-900" contentContainerStyle={{ paddingBottom: 32 }}>
 
       {/* Back button */}
@@ -245,7 +256,7 @@ const ArtistScreen: React.FC = () => {
         {/* Banner */}
         {profile.bannerUrl && (
           <View className="w-full h-32 rounded-xl overflow-hidden mb-3">
-            <Image source={{ uri: profile.bannerUrl }} className="w-full h-full" accessibilityLabel="Profile banner" />
+            <Image source={{ uri: profile.bannerUrl }} className="w-full h-full" accessibilityLabel={t('profile.banner')} />
           </View>
         )}
 
@@ -281,7 +292,7 @@ const ArtistScreen: React.FC = () => {
                       : <UserPlus size={16} color="white" />
                   }
                   <Text className={`font-medium text-sm ${followStats.isFollowing ? 'text-gray-300' : 'text-white'}`}>
-                    {followStats.isFollowing ? 'Following' : 'Follow'}
+                    {followStats.isFollowing ? t('profile.following') : t('profileView.follow')}
                   </Text>
                 </TouchableOpacity>
               </>
@@ -294,9 +305,9 @@ const ArtistScreen: React.FC = () => {
           <View className="flex-row items-center gap-2 flex-wrap mb-1">
             <Text className="text-2xl font-bold text-white">{profile.username}</Text>
             <VerifiedBadge verified={profile.isVerified || profile.isVerifiedArtist} size={20} />
-            {profile.subscriptionTier === 'pro' && (
+            {profile.subscriptionTier === 'artist' && (
               <View className="px-2 py-0.5 rounded-full bg-yellow-500/20 border border-yellow-500/30">
-                <Text className="text-yellow-400 text-xs font-bold">PRO</Text>
+                <Text className="text-yellow-400 text-xs font-bold">{t('profile.artistBadge')}</Text>
               </View>
             )}
           </View>
@@ -307,7 +318,7 @@ const ArtistScreen: React.FC = () => {
             </View>
           )}
           <Text className="text-gray-300 text-sm">
-            {profile.bio || (isMusicianProfile ? 'Musician' : 'Listener')}
+            {profile.bio || (isMusicianProfile ? t('profile.musician') : t('profile.listener'))}
           </Text>
         </View>
 
@@ -343,7 +354,7 @@ const ArtistScreen: React.FC = () => {
                   ? `${(followStats.followers / 1000).toFixed(1)}K`
                   : followStats.followers}
               </Text>
-              <Text className="text-xs text-gray-400">Followers</Text>
+              <Text className="text-xs text-gray-400">{t('profile.followers')}</Text>
             </View>
           </TouchableOpacity>
 
@@ -353,11 +364,20 @@ const ArtistScreen: React.FC = () => {
             </View>
             <View>
               <Text className="text-xl font-bold text-white">{followStats.following}</Text>
-              <Text className="text-xs text-gray-400">Following</Text>
+              <Text className="text-xs text-gray-400">{t('profile.following')}</Text>
             </View>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Early Ear (shown only if public, or it's you) */}
+
+      <View className="px-4 mb-4">
+
+        <EarlyEarCard userId={profile.id} isOwn={currentUser?.id === profile.id} />
+
+      </View>
+
 
       {/* Tab Navigation */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-4 mb-4">
@@ -384,17 +404,17 @@ const ArtistScreen: React.FC = () => {
           <View>
             <View className="flex-row items-center gap-2 mb-4">
               <Music size={20} color="#a78bfa" />
-              <Text className="text-xl font-bold text-white">Music</Text>
+              <Text className="text-xl font-bold text-white">{t('profile.tabs.music')}</Text>
             </View>
             {isLoadingTracks ? (
               <View className="flex-row items-center justify-center py-8 gap-2">
-                <ActivityIndicator size="small" color="#a78bfa" />
-                <Text className="text-gray-400">Loading tracks...</Text>
+                <ActivityIndicator size="small" color="#000000" />
+                <Text className="text-black">{t('profile.loadingTracks')}</Text>
               </View>
             ) : userTracks.length === 0 ? (
               <View className="items-center py-12">
                 <Music size={48} color="#4b5563" />
-                <Text className="text-gray-400 mt-4">No tracks yet.</Text>
+                <Text className="text-gray-400 mt-4">{t('profileView.noTracks')}</Text>
               </View>
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -415,17 +435,17 @@ const ArtistScreen: React.FC = () => {
           <View>
             <View className="flex-row items-center gap-2 mb-4">
               <ListMusic size={20} color="#7c3aed" />
-              <Text className="text-xl font-bold text-white">Playlists</Text>
+              <Text className="text-xl font-bold text-white">{t('profileView.playlists')}</Text>
             </View>
             {isLoadingPlaylists ? (
               <View className="flex-row items-center justify-center py-8 gap-2">
-                <ActivityIndicator size="small" color="#a78bfa" />
-                <Text className="text-gray-400">Loading playlists...</Text>
+                <ActivityIndicator size="small" color="#000000" />
+                <Text className="text-black">{t('profileView.loadingPlaylists')}</Text>
               </View>
             ) : playlists.length === 0 ? (
               <View className="items-center py-12">
                 <ListMusic size={48} color="#4b5563" />
-                <Text className="text-gray-400 mt-4">No playlists yet.</Text>
+                <Text className="text-gray-400 mt-4">{t('profileView.noPlaylists')}</Text>
               </View>
             ) : (
               <View className="gap-3">
@@ -449,17 +469,17 @@ const ArtistScreen: React.FC = () => {
           <View>
             <View className="flex-row items-center gap-2 mb-4">
               <Music size={20} color="#a78bfa" />
-              <Text className="text-xl font-bold text-white">Albums</Text>
+              <Text className="text-xl font-bold text-white">{t('profile.tabs.albums')}</Text>
             </View>
             {isLoadingAlbums ? (
               <View className="flex-row items-center justify-center py-8 gap-2">
-                <ActivityIndicator size="small" color="#a78bfa" />
-                <Text className="text-gray-400">Loading albums...</Text>
+                <ActivityIndicator size="small" color="#000000" />
+                <Text className="text-black">{t('profile.loadingAlbums')}</Text>
               </View>
             ) : albums.length === 0 ? (
               <View className="items-center py-12">
                 <Music size={48} color="#4b5563" />
-                <Text className="text-gray-400 mt-4">No albums yet.</Text>
+                <Text className="text-gray-400 mt-4">{t('profileView.noAlbums')}</Text>
               </View>
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -487,17 +507,17 @@ const ArtistScreen: React.FC = () => {
           <View>
             <View className="flex-row items-center gap-2 mb-4">
               <Calendar size={20} color="#a78bfa" />
-              <Text className="text-xl font-bold text-white">Concerts</Text>
+              <Text className="text-xl font-bold text-white">{t('profile.tabs.concerts')}</Text>
             </View>
             {isLoadingConcerts ? (
               <View className="flex-row items-center justify-center py-8 gap-2">
-                <ActivityIndicator size="small" color="#a78bfa" />
-                <Text className="text-gray-400">Loading concerts...</Text>
+                <ActivityIndicator size="small" color="#000000" />
+                <Text className="text-black">{t('profile.loadingConcerts')}</Text>
               </View>
             ) : concerts.length === 0 ? (
               <View className="items-center py-12">
                 <Calendar size={48} color="#4b5563" />
-                <Text className="text-gray-400 mt-4">No upcoming concerts.</Text>
+                <Text className="text-gray-400 mt-4">{t('profileView.noConcerts')}</Text>
               </View>
             ) : (
               <View className="gap-4">
@@ -508,7 +528,7 @@ const ArtistScreen: React.FC = () => {
                       <View className="flex-row items-center gap-2">
                         <Calendar size={14} color="#a78bfa" />
                         <Text className="text-gray-300 text-sm">
-                          {new Date(concert.date).toLocaleDateString('en-US', {
+                          {formatConcertDate(concert.date, {
                             weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
                           })}
                         </Text>
@@ -517,21 +537,26 @@ const ArtistScreen: React.FC = () => {
                         <MapPin size={14} color="#a78bfa" />
                         <Text className="text-gray-300 text-sm">{concert.venue}, {concert.location}</Text>
                       </View>
-                      {concert.ticketPrice && (
-                        <Text className="text-primary-400 font-medium text-sm">${concert.ticketPrice}</Text>
-                      )}
+                      {formatTicketPrice(concert.ticketPrice) ? (
+                        <Text className="text-primary-400 font-medium text-sm">{formatTicketPrice(concert.ticketPrice)}</Text>
+                      ) : null}
                       {concert.description && (
                         <Text className="text-gray-400 text-sm mt-1">{concert.description}</Text>
                       )}
                     </View>
-                    {concert.ticketUrl && (
-                      <TouchableOpacity
-                        onPress={() => Linking.openURL(concert.ticketUrl!).catch(console.error)}
-                        className="mt-3 px-4 py-2 bg-primary-600 rounded-lg self-start"
-                      >
-                        <Text className="text-white text-sm">Get Tickets</Text>
-                      </TouchableOpacity>
-                    )}
+                    {concert.ticketUrl ? (
+                      <View>
+                        <TouchableOpacity
+                          onPress={() => openTicketUrl(concert.ticketUrl)}
+                          className="mt-3 px-4 py-2 bg-primary-600 rounded-lg self-start"
+                        >
+                          <Text className="text-white text-sm">{t('concerts.getTickets')}</Text>
+                        </TouchableOpacity>
+                        <Text className="text-gray-500 text-xs mt-1.5">{thirdPartyTicketsNote()}</Text>
+                      </View>
+                    ) : concert.ticketPrice ? (
+                      <BuyTicketButton concertId={concert.id} capacity={concert.capacity} />
+                    ) : null}
                   </View>
                 ))}
               </View>
@@ -549,9 +574,9 @@ const ArtistScreen: React.FC = () => {
           </View>
           <View className="gap-4">
             <View className="bg-dark-800 rounded-lg p-4">
-              <Text className="text-white font-semibold mb-2">Biography</Text>
+              <Text className="text-white font-semibold mb-2">{t('profile.biography')}</Text>
               <Text className="text-gray-300 leading-relaxed">
-                {profile.bio || 'No biography yet.'}
+                {profile.bio || t('profileView.noBio')}
               </Text>
             </View>
             {(() => {
@@ -559,11 +584,11 @@ const ArtistScreen: React.FC = () => {
               if (!Array.isArray(genres) || genres.length === 0) return null;
               return (
                 <View className="bg-dark-800 rounded-lg p-4">
-                  <Text className="text-white font-semibold mb-3">Genres</Text>
+                  <Text className="text-white font-semibold mb-3">{t('profileView.genres')}</Text>
                   <View className="flex-row flex-wrap gap-2">
                     {genres.map((genre: string, i: number) => (
                       <View key={i} className="px-3 py-1.5 bg-primary-600 rounded-full">
-                        <Text className="text-white text-sm font-medium">{genre}</Text>
+                        <Text className="text-white text-sm font-medium">{genreLabel(genre)}</Text>
                       </View>
                     ))}
                   </View>
@@ -579,7 +604,7 @@ const ArtistScreen: React.FC = () => {
         <View className="flex-1 bg-black/70 justify-end">
           <View className="bg-dark-800 rounded-t-2xl" style={{ maxHeight: '60%' }}>
             <View className="flex-row items-center justify-between px-5 py-4 border-b border-dark-700/60">
-              <Text className="text-base font-semibold text-white">Followers</Text>
+              <Text className="text-base font-semibold text-white">{t('profile.followers')}</Text>
               <TouchableOpacity onPress={() => setShowFollowersModal(false)} className="p-1.5">
                 <X size={18} color="#6b7280" />
               </TouchableOpacity>
@@ -588,7 +613,7 @@ const ArtistScreen: React.FC = () => {
               {isFollowersLoading ? (
                 <View className="items-center py-8"><ActivityIndicator size="small" color="#a78bfa" /></View>
               ) : followersList.length === 0 ? (
-                <Text className="text-center text-gray-400 py-8">No followers yet.</Text>
+                <Text className="text-center text-gray-400 py-8">{t('profileView.noFollowers')}</Text>
               ) : (
                 followersList.map(f => (
                   <View key={f.id} className="flex-row items-center gap-3 py-3 border-b border-dark-700/40">
@@ -608,7 +633,7 @@ const ArtistScreen: React.FC = () => {
         <View className="flex-1 bg-black/70 justify-end">
           <View className="bg-dark-800 rounded-t-2xl" style={{ maxHeight: '60%' }}>
             <View className="flex-row items-center justify-between px-5 py-4 border-b border-dark-700/60">
-              <Text className="text-base font-semibold text-white">Following</Text>
+              <Text className="text-base font-semibold text-white">{t('profile.following')}</Text>
               <TouchableOpacity onPress={() => setShowFollowingModal(false)} className="p-1.5">
                 <X size={18} color="#6b7280" />
               </TouchableOpacity>
@@ -617,7 +642,7 @@ const ArtistScreen: React.FC = () => {
               {isFollowingListLoading ? (
                 <View className="items-center py-8"><ActivityIndicator size="small" color="#a78bfa" /></View>
               ) : followingList.length === 0 ? (
-                <Text className="text-center text-gray-400 py-8">Not following anyone yet.</Text>
+                <Text className="text-center text-gray-400 py-8">{t('profileView.notFollowing')}</Text>
               ) : (
                 followingList.map(f => (
                   <View key={f.id} className="flex-row items-center gap-3 py-3 border-b border-dark-700/40">

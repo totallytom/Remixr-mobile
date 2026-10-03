@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
+  Text as RNText,
   ScrollView,
   TouchableOpacity,
   Image,
@@ -10,7 +10,15 @@ import {
   Modal,
   Linking,
   TextInput,
+  Alert,
+  type TextProps,
 } from 'react-native';
+import { FONTS } from '../../utils/fonts';
+import { colors } from '../../theme'
+
+const Text = ({ style, ...props }: TextProps) => (
+  <RNText style={[{ fontFamily: FONTS.body }, style]} {...props} />
+);
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -28,6 +36,8 @@ import {
   MessageCircle,
   ChevronLeft,
   Search,
+  MoreHorizontal,
+  Ban,
 } from 'lucide-react-native';
 import { ChatService } from '../../services/chatService';
 import { FollowService } from '../../services/followService';
@@ -43,7 +53,17 @@ import PlaylistCard from '../../components/music/PlaylistCard';
 import TrackCard from '../../components/music/TrackCard';
 import AlbumCard from '../../components/music/AlbumCard';
 import VerifiedBadge from '../../components/VerifiedBadge';
+import BuyTicketButton from '../../components/music/BuyTicketButton';
 import { getAvatarUrl } from '../../utils/avatar';
+import { BlockService } from '../../services/blockService';
+import ReportSheet from '../../components/moderation/ReportSheet';
+import type { ReportTarget } from '../../services/reportService';
+import { formatTicketPrice, openTicketUrl, thirdPartyTicketsNote } from '../../utils/concerts';
+import { requireAuth } from '../../components/auth/GuestPrompt';
+import { formatConcertDate } from '../../utils/dateLocale';
+import { useTranslation } from 'react-i18next';
+import { genreLabel } from '../../utils/genres';
+import EarlyEarCard from '../../components/earlyEar/EarlyEarCard';
 
 type ProfileByIdRouteProp = RouteProp<
   { ProfileById: { userId?: string; handle?: string } },
@@ -51,6 +71,7 @@ type ProfileByIdRouteProp = RouteProp<
 >;
 
 export function ProfileByIdScreen() {
+  const { t } = useTranslation();
   const route = useRoute<ProfileByIdRouteProp>();
   const navigation = useNavigation<NativeStackNavigationProp<any>>();
   const { userId, handle } = route.params ?? {};
@@ -59,6 +80,10 @@ export function ProfileByIdScreen() {
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [followStats, setFollowStats] = useState<FollowStats>({ followers: 0, following: 0, isFollowing: false });
+  // 'blocked_me': the profile owner blocked the viewer — shown as unavailable.
+  const [blockState, setBlockState] = useState<'none' | 'blocked_by_me' | 'blocked_me'>('none');
+  const [isBlockLoading, setIsBlockLoading] = useState(false);
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
   const [isFollowLoading, setIsFollowLoading] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'music' | 'playlists' | 'albums' | 'concerts'>('music');
@@ -91,6 +116,12 @@ export function ProfileByIdScreen() {
           : await ChatService.getProfileBySlug(userId!);
         setProfile(data);
         if (data) {
+          if (currentUser && currentUser.id !== data.id) {
+            const iBlocked = await BlockService.hasBlocked(currentUser.id, data.id);
+            setBlockState(iBlocked ? 'blocked_by_me' : BlockService.isHidden(data.id) ? 'blocked_me' : 'none');
+          } else {
+            setBlockState('none');
+          }
           const stats = await FollowService.getFollowStats(data.id, currentUser?.id);
           setFollowStats(stats);
         }
@@ -158,7 +189,8 @@ export function ProfileByIdScreen() {
   }, [profile?.id]);
 
   const handleFollowToggle = useCallback(async () => {
-    if (!currentUser || !profile) return;
+    if (!currentUser) { requireAuth('follow'); return; }
+    if (!profile) return;
     setIsFollowLoading(true);
     try {
       if (followStats.isFollowing) {
@@ -176,11 +208,68 @@ export function ProfileByIdScreen() {
   }, [currentUser, profile, followStats.isFollowing]);
 
   const handleMessage = useCallback(() => {
+    if (!requireAuth('chat')) return;
     (navigation.getParent() as any)?.navigate('ChatTab', {
       screen: 'Chat',
       params: { openUserId: profile?.id },
     });
   }, [navigation, profile?.id]);
+
+  const blockNow = useCallback(async () => {
+    if (!currentUser || !profile) return;
+    setIsBlockLoading(true);
+    try {
+      await BlockService.blockUser(currentUser.id, profile.id);
+      setBlockState('blocked_by_me');
+      setFollowStats(prev => ({ ...prev, isFollowing: false }));
+    } catch (err) {
+      Alert.alert(t('common.error'), err instanceof Error ? err.message : t('profileView.blockFailed'));
+    } finally {
+      setIsBlockLoading(false);
+    }
+  }, [currentUser, profile]);
+
+  const handleBlock = useCallback(() => {
+    if (!currentUser || !profile) return;
+    Alert.alert(
+      t('profileView.blockTitle', { name: profile.username }),
+      t('profileView.blockBody'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('profileView.block'),
+          style: 'destructive',
+          onPress: blockNow,
+        },
+      ],
+    );
+  }, [currentUser, profile, blockNow]);
+
+  const handleUnblock = useCallback(async () => {
+    if (!currentUser || !profile) return;
+    setIsBlockLoading(true);
+    try {
+      await BlockService.unblockUser(currentUser.id, profile.id);
+      setBlockState(BlockService.isHidden(profile.id) ? 'blocked_me' : 'none');
+    } catch (err) {
+      Alert.alert(t('common.error'), err instanceof Error ? err.message : t('profileView.unblockFailed'));
+    } finally {
+      setIsBlockLoading(false);
+    }
+  }, [currentUser, profile]);
+
+  const handleMoreOptions = useCallback(() => {
+    if (!profile) return;
+    // Report and Block both need an account.
+    if (!requireAuth('report')) return;
+    Alert.alert(profile.username, undefined, [
+      { text: t('profileView.report'), onPress: () => setReportTarget({ userId: profile.id, username: profile.username }) },
+      blockState === 'blocked_by_me'
+        ? { text: t('profileView.unblock'), onPress: handleUnblock }
+        : { text: t('profileView.block'), style: 'destructive', onPress: handleBlock },
+      { text: t('common.cancel'), style: 'cancel' },
+    ]);
+  }, [profile, blockState, handleBlock, handleUnblock]);
 
   const handleOpenFollowers = async () => {
     setShowFollowersModal(true);
@@ -207,20 +296,20 @@ export function ProfileByIdScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
         <View className="flex-1 items-center justify-center gap-3 bg-dark-900">
-          <ActivityIndicator size="large" color="#7c3aed" />
-          <Text className="text-gray-400">Loading profile...</Text>
+          <ActivityIndicator size="large" color="#000000" />
+          <Text className="text-black">{t('profile.loading')}</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (!profile) {
+  if (!profile || blockState === 'blocked_me') {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
         <View className="flex-1 items-center justify-center bg-dark-900">
-          <Text className="text-gray-400">Profile not found.</Text>
+          <Text className="text-gray-400">{t('profileView.notFound')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -230,14 +319,15 @@ export function ProfileByIdScreen() {
   const isMusicianProfile = profile.role === 'musician';
 
   const tabs = [
-    { key: 'music', label: 'Music' },
-    { key: 'playlists', label: 'Playlists' },
-    ...(isMusicianProfile ? [{ key: 'albums', label: 'Albums' }, { key: 'concerts', label: 'Concerts' }] : []),
+    { key: 'music', label: t('profile.tabs.music') },
+    { key: 'playlists', label: t('profileView.playlists') },
+    ...(isMusicianProfile ? [{ key: 'albums', label: t('profile.tabs.albums') }, { key: 'concerts', label: t('profile.tabs.concerts') }] : []),
   ] as { key: typeof activeTab; label: string }[];
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
-      <ScrollView className="flex-1 bg-dark-900" contentContainerStyle={{ paddingBottom: 32 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+      <View style={{ height: 2, backgroundColor: colors.dark900 }} />
+      <ScrollView className="flex-1 bg-white" contentContainerStyle={{ paddingBottom: 32 }}>
 
         {/* Back button */}
         <TouchableOpacity
@@ -253,7 +343,7 @@ export function ProfileByIdScreen() {
           {/* Banner */}
           {profile.bannerUrl && (
             <View className="w-full h-32 rounded-xl overflow-hidden mb-3">
-              <Image source={{ uri: profile.bannerUrl }} className="w-full h-full" accessibilityLabel="Profile banner" />
+              <Image source={{ uri: profile.bannerUrl }} className="w-full h-full" accessibilityLabel={t('profile.banner')} />
             </View>
           )}
 
@@ -261,12 +351,22 @@ export function ProfileByIdScreen() {
           <View className="flex-row items-end justify-between mb-4">
             <Image
               source={{ uri: getAvatarUrl(profile.avatar) }}
-              className="w-24 h-24 rounded-full border-4 border-white"
+              className="w-24 h-24 rounded-full border-2 border-dark"
               accessibilityLabel={profile.username}
             />
 
             <View className="flex-row items-center gap-2">
               {currentUser && currentUser.id !== profile.id && (
+                <TouchableOpacity
+                  onPress={handleMoreOptions}
+                  disabled={isBlockLoading}
+                  className="p-2.5 rounded-full bg-dark-700"
+                  accessibilityLabel={t('profileView.moreOptions')}
+                >
+                  {isBlockLoading ? <ActivityIndicator size="small" color="white" /> : <MoreHorizontal size={20} color="white" />}
+                </TouchableOpacity>
+              )}
+              {currentUser && currentUser.id !== profile.id && blockState === 'none' && (
                 <>
                   <TouchableOpacity
                     onPress={handleMessage}
@@ -289,7 +389,7 @@ export function ProfileByIdScreen() {
                         : <UserPlus size={16} color="white" />
                     }
                     <Text className={`font-medium text-sm ${followStats.isFollowing ? 'text-gray-300' : 'text-white'}`}>
-                      {followStats.isFollowing ? 'Following' : 'Follow'}
+                      {followStats.isFollowing ? t('profile.following') : t('profileView.follow')}
                     </Text>
                   </TouchableOpacity>
                 </>
@@ -300,11 +400,11 @@ export function ProfileByIdScreen() {
           {/* Name + handle + bio */}
           <View className="mb-3">
             <View className="flex-row items-center gap-2 flex-wrap mb-1">
-              <Text className="text-2xl font-bold text-white">{profile.username}</Text>
+              <Text className="text-2xl font-bold text-black">{profile.username}</Text>
               <VerifiedBadge verified={profile.isVerified || profile.isVerifiedArtist} size={20} />
-              {profile.subscriptionTier === 'pro' && (
+              {profile.subscriptionTier === 'artist' && (
                 <View className="px-2 py-0.5 rounded-full bg-yellow-500/20 border border-yellow-500/30">
-                  <Text className="text-yellow-400 text-xs font-bold">PRO</Text>
+                  <Text className="text-yellow-400 text-xs font-bold">{t('profile.artistBadge')}</Text>
                 </View>
               )}
             </View>
@@ -314,8 +414,8 @@ export function ProfileByIdScreen() {
                 <Text className="text-violet-400 text-xs">{profile.vanityUrl}</Text>
               </View>
             )}
-            <Text className="text-gray-300 text-sm">
-              {profile.bio || (isMusicianProfile ? 'Musician' : 'Listener')}
+            <Text className="text-black text-sm">
+              {profile.bio || (isMusicianProfile ? t('profile.musician') : t('profile.listener'))}
             </Text>
           </View>
 
@@ -346,12 +446,12 @@ export function ProfileByIdScreen() {
                 <Users size={18} color="#7c3aed" />
               </View>
               <View>
-                <Text className="text-xl font-bold text-white">
+                <Text className="text-xl font-bold text-black">
                   {followStats.followers >= 1000
                     ? `${(followStats.followers / 1000).toFixed(1)}K`
                     : followStats.followers}
                 </Text>
-                <Text className="text-xs text-gray-400">Followers</Text>
+                <Text className="text-xs text-black">{t('profile.followers')}</Text>
               </View>
             </TouchableOpacity>
 
@@ -360,29 +460,61 @@ export function ProfileByIdScreen() {
                 <UserIcon size={18} color="#6b7280" />
               </View>
               <View>
-                <Text className="text-xl font-bold text-white">{followStats.following}</Text>
-                <Text className="text-xs text-gray-400">Following</Text>
+                <Text className="text-xl font-bold text-black">{followStats.following}</Text>
+                <Text className="text-xs text-black">{t('profile.following')}</Text>
               </View>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Tab Navigation */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-4 mb-4">
-          <View className="flex-row gap-1 bg-dark-800 rounded-lg p-1">
-            {tabs.map(tab => (
-              <TouchableOpacity
-                key={tab.key}
-                onPress={() => setActiveTab(tab.key)}
-                className={`py-2 px-3 rounded-md ${activeTab === tab.key ? 'bg-primary-600' : ''}`}
-              >
-                <Text className={`text-sm font-medium ${activeTab === tab.key ? 'text-white' : 'text-gray-400'}`}>
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+        {blockState === 'blocked_by_me' ? (
+          <View className="mx-4 mt-2 items-center gap-3 rounded-2xl border border-dark-700 p-6">
+            <Ban size={32} color="#6b7280" />
+            <Text className="text-black font-semibold">{t('profileView.youBlocked', { name: profile.username })}</Text>
+            <Text className="text-gray-500 text-sm text-center">
+              {t('profileView.blockedBody')}
+            </Text>
+            <TouchableOpacity
+              onPress={handleUnblock}
+              disabled={isBlockLoading}
+              className="px-5 py-2 rounded-full bg-dark-700"
+            >
+              {isBlockLoading
+                ? <ActivityIndicator size="small" color="white" />
+                : <Text className="text-white text-sm font-medium">{t('profileView.unblock')}</Text>}
+            </TouchableOpacity>
           </View>
-        </ScrollView>
+        ) : (
+        <>
+        {/* Early Ear (shown only if public, or it's you) */}
+        <View className="px-4 mb-4">
+          <EarlyEarCard userId={profile.id} isOwn={currentUser?.id === profile.id} />
+        </View>
+
+        {/* Tab Navigation */}
+        <View style={{ flexDirection: 'row', borderTopWidth: 1, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(1,1,1,0.50)', marginBottom: 16 }}>
+          {tabs.map(tab => (
+            <TouchableOpacity
+              key={tab.key}
+              onPress={() => setActiveTab(tab.key)}
+              style={{
+                flex: 1,
+                paddingVertical: 12,
+                alignItems: 'center',
+                borderBottomWidth: 2,
+                borderBottomColor: activeTab === tab.key ? '#7c3aed' : 'transparent',
+              }}
+            >
+              <Text style={{
+                fontSize: 12,
+                fontWeight: activeTab === tab.key ? '700' : '400',
+                color: activeTab === tab.key ? '#fff' : 'black',
+              }}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
         {/* Tab Content */}
         <View className="px-4">
@@ -392,17 +524,17 @@ export function ProfileByIdScreen() {
             <View>
               <View className="flex-row items-center gap-2 mb-4">
                 <Music size={20} color="#a78bfa" />
-                <Text className="text-xl font-bold text-white">Music</Text>
+                <Text className="text-xl font-bold text-black">{t('profile.tabs.music')}</Text>
               </View>
               {isLoadingTracks ? (
                 <View className="flex-row items-center justify-center py-8 gap-2">
-                  <ActivityIndicator size="small" color="#a78bfa" />
-                  <Text className="text-gray-400">Loading tracks...</Text>
+                  <ActivityIndicator size="small" color="#000000" />
+                  <Text className="text-black">{t('profile.loadingTracks')}</Text>
                 </View>
               ) : userTracks.length === 0 ? (
                 <View className="items-center py-12">
                   <Music size={48} color="#4b5563" />
-                  <Text className="text-gray-400 mt-4">No tracks yet.</Text>
+                  <Text className="text-gray-400 mt-4">{t('profileView.noTracks')}</Text>
                 </View>
               ) : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -423,17 +555,17 @@ export function ProfileByIdScreen() {
             <View>
               <View className="flex-row items-center gap-2 mb-4">
                 <ListMusic size={20} color="#7c3aed" />
-                <Text className="text-xl font-bold text-white">Playlists</Text>
+                <Text className="text-xl font-bold text-black">{t('profileView.playlists')}</Text>
               </View>
               {isLoadingPlaylists ? (
                 <View className="flex-row items-center justify-center py-8 gap-2">
-                  <ActivityIndicator size="small" color="#a78bfa" />
-                  <Text className="text-gray-400">Loading playlists...</Text>
+                  <ActivityIndicator size="small" color="#000000" />
+                  <Text className="text-black">{t('profileView.loadingPlaylists')}</Text>
                 </View>
               ) : playlists.length === 0 ? (
                 <View className="items-center py-12">
                   <ListMusic size={48} color="#4b5563" />
-                  <Text className="text-gray-400 mt-4">No playlists yet.</Text>
+                  <Text className="text-gray-400 mt-4">{t('profileView.noPlaylists')}</Text>
                 </View>
               ) : (
                 <View className="gap-3">
@@ -457,17 +589,17 @@ export function ProfileByIdScreen() {
             <View>
               <View className="flex-row items-center gap-2 mb-4">
                 <Music size={20} color="#a78bfa" />
-                <Text className="text-xl font-bold text-white">Albums</Text>
+                <Text className="text-xl font-bold text-black">{t('profile.tabs.albums')}</Text>
               </View>
               {isLoadingAlbums ? (
                 <View className="flex-row items-center justify-center py-8 gap-2">
-                  <ActivityIndicator size="small" color="#a78bfa" />
-                  <Text className="text-gray-400">Loading albums...</Text>
+                  <ActivityIndicator size="small" color="#000000" />
+                  <Text className="text-black">{t('profile.loadingAlbums')}</Text>
                 </View>
               ) : albums.length === 0 ? (
                 <View className="items-center py-12">
                   <Music size={48} color="#4b5563" />
-                  <Text className="text-gray-400 mt-4">No albums yet.</Text>
+                  <Text className="text-gray-400 mt-4">{t('profileView.noAlbums')}</Text>
                 </View>
               ) : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -495,17 +627,17 @@ export function ProfileByIdScreen() {
             <View>
               <View className="flex-row items-center gap-2 mb-4">
                 <Calendar size={20} color="#a78bfa" />
-                <Text className="text-xl font-bold text-white">Concerts</Text>
+                <Text className="text-xl font-bold text-black">{t('profile.tabs.concerts')}</Text>
               </View>
               {isLoadingConcerts ? (
                 <View className="flex-row items-center justify-center py-8 gap-2">
-                  <ActivityIndicator size="small" color="#a78bfa" />
-                  <Text className="text-gray-400">Loading concerts...</Text>
+                  <ActivityIndicator size="small" color="#000000" />
+                  <Text className="text-black">{t('profile.loadingConcerts')}</Text>
                 </View>
               ) : concerts.length === 0 ? (
                 <View className="items-center py-12">
                   <Calendar size={48} color="#4b5563" />
-                  <Text className="text-gray-400 mt-4">No upcoming concerts.</Text>
+                  <Text className="text-gray-400 mt-4">{t('profileView.noConcerts')}</Text>
                 </View>
               ) : (
                 <View className="gap-4">
@@ -516,7 +648,7 @@ export function ProfileByIdScreen() {
                         <View className="flex-row items-center gap-2">
                           <Calendar size={14} color="#a78bfa" />
                           <Text className="text-gray-300 text-sm">
-                            {new Date(concert.date).toLocaleDateString('en-US', {
+                            {formatConcertDate(concert.date, {
                               weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
                             })}
                           </Text>
@@ -525,21 +657,26 @@ export function ProfileByIdScreen() {
                           <MapPin size={14} color="#a78bfa" />
                           <Text className="text-gray-300 text-sm">{concert.venue}, {concert.location}</Text>
                         </View>
-                        {concert.ticketPrice && (
-                          <Text className="text-primary-400 font-medium text-sm">${concert.ticketPrice}</Text>
-                        )}
+                        {formatTicketPrice(concert.ticketPrice) ? (
+                          <Text className="text-primary-400 font-medium text-sm">{formatTicketPrice(concert.ticketPrice)}</Text>
+                        ) : null}
                         {concert.description && (
                           <Text className="text-gray-400 text-sm mt-1">{concert.description}</Text>
                         )}
                       </View>
-                      {concert.ticketUrl && (
-                        <TouchableOpacity
-                          onPress={() => Linking.openURL(concert.ticketUrl!).catch(console.error)}
-                          className="mt-3 px-4 py-2 bg-primary-600 rounded-lg self-start"
-                        >
-                          <Text className="text-white text-sm">Get Tickets</Text>
-                        </TouchableOpacity>
-                      )}
+                      {concert.ticketUrl ? (
+                        <View>
+                          <TouchableOpacity
+                            onPress={() => openTicketUrl(concert.ticketUrl)}
+                            className="mt-3 px-4 py-2 bg-primary-600 rounded-lg self-start"
+                          >
+                            <Text className="text-white text-sm">{t('concerts.getTickets')}</Text>
+                          </TouchableOpacity>
+                          <Text className="text-gray-500 text-xs mt-1.5">{thirdPartyTicketsNote()}</Text>
+                        </View>
+                      ) : concert.ticketPrice ? (
+                        <BuyTicketButton concertId={concert.id} capacity={concert.capacity} />
+                      ) : null}
                     </View>
                   ))}
                 </View>
@@ -551,15 +688,15 @@ export function ProfileByIdScreen() {
           <View className="mt-6">
             <View className="flex-row items-center gap-2 mb-4">
               <UserIcon size={20} color="#a78bfa" />
-              <Text className="text-xl font-bold text-white">
+              <Text className="text-xl font-bold text-black">
                 About {profile.artistName || profile.username}
               </Text>
             </View>
             <View className="gap-4">
               <View className="bg-dark-800 rounded-lg p-4">
-                <Text className="text-white font-semibold mb-2">Biography</Text>
+                <Text className="text-white font-semibold mb-2">{t('profile.biography')}</Text>
                 <Text className="text-gray-300 leading-relaxed">
-                  {profile.bio || 'No biography yet.'}
+                  {profile.bio || t('profileView.noBio')}
                 </Text>
               </View>
               {(() => {
@@ -567,11 +704,11 @@ export function ProfileByIdScreen() {
                 if (!Array.isArray(genres) || genres.length === 0) return null;
                 return (
                   <View className="bg-dark-800 rounded-lg p-4">
-                    <Text className="text-white font-semibold mb-3">Genres</Text>
+                    <Text className="text-white font-semibold mb-3">{t('profileView.genres')}</Text>
                     <View className="flex-row flex-wrap gap-2">
                       {genres.map((genre: string, i: number) => (
                         <View key={i} className="px-3 py-1.5 bg-primary-600 rounded-full">
-                          <Text className="text-white text-sm font-medium">{genre}</Text>
+                          <Text className="text-white text-sm font-medium">{genreLabel(genre)}</Text>
                         </View>
                       ))}
                     </View>
@@ -581,6 +718,8 @@ export function ProfileByIdScreen() {
             </View>
           </View>
         </View>
+        </>
+        )}
 
         {/* Followers Modal */}
         <Modal
@@ -590,14 +729,14 @@ export function ProfileByIdScreen() {
           onRequestClose={() => { setShowFollowersModal(false); setFollowersSearch(''); }}
         >
           <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
-            <View style={{ backgroundColor: '#121212', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '88%' }}>
+            <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '88%' }}>
               <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 4 }}>
                 <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' }} />
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 }}>
                 <View>
-                  <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>Followers</Text>
-                  <Text style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, marginTop: 2 }}>{followStats.followers} followers</Text>
+                  <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>{t('profile.followers')}</Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, marginTop: 2 }}>{t('profileView.followersCount', { count: followStats.followers })}</Text>
                 </View>
                 <TouchableOpacity onPress={() => { setShowFollowersModal(false); setFollowersSearch(''); }} style={{ padding: 6 }}>
                   <X size={22} color="rgba(255,255,255,0.6)" />
@@ -608,7 +747,7 @@ export function ProfileByIdScreen() {
                 <TextInput
                   value={followersSearch}
                   onChangeText={setFollowersSearch}
-                  placeholder="Search followers"
+                  placeholder={t('profile.searchFollowers')}
                   placeholderTextColor="rgba(255,255,255,0.35)"
                   style={{ flex: 1, marginLeft: 8, color: '#fff', fontSize: 14 }}
                   autoCapitalize="none"
@@ -621,8 +760,8 @@ export function ProfileByIdScreen() {
               </View>
               {isFollowersLoading ? (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                  <ActivityIndicator size="large" color="#a78bfa" />
-                  <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Loading…</Text>
+                  <ActivityIndicator size="large" color="#000000" />
+                  <Text style={{ color: '#000000', fontSize: 13 }}>Loading…</Text>
                 </View>
               ) : (
                 <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
@@ -630,10 +769,10 @@ export function ProfileByIdScreen() {
                     <View style={{ alignItems: 'center', paddingTop: 56 }}>
                       <Users size={48} color="#374151" strokeWidth={1.5} />
                       <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginTop: 16 }}>
-                        {followersSearch ? 'No results' : 'No followers yet'}
+                        {followersSearch ? t('profile.noResults') : t('profile.noFollowers')}
                       </Text>
                       <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginTop: 6 }}>
-                        {followersSearch ? `No one matches "${followersSearch}"` : 'Share this profile to grow followers'}
+                        {followersSearch ? t('profile.noMatch', { query: followersSearch }) : t('profileView.shareToGrow')}
                       </Text>
                     </View>
                   ) : (
@@ -666,14 +805,14 @@ export function ProfileByIdScreen() {
           onRequestClose={() => { setShowFollowingModal(false); setFollowingSearch(''); }}
         >
           <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
-            <View style={{ backgroundColor: '#121212', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '88%' }}>
+            <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '88%' }}>
               <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 4 }}>
                 <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' }} />
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 }}>
                 <View>
-                  <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>Following</Text>
-                  <Text style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, marginTop: 2 }}>Following {followStats.following} people</Text>
+                  <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>{t('profile.following')}</Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, marginTop: 2 }}>{t('profileView.followingCount', { count: followStats.following })}</Text>
                 </View>
                 <TouchableOpacity onPress={() => { setShowFollowingModal(false); setFollowingSearch(''); }} style={{ padding: 6 }}>
                   <X size={22} color="rgba(255,255,255,0.6)" />
@@ -684,7 +823,7 @@ export function ProfileByIdScreen() {
                 <TextInput
                   value={followingSearch}
                   onChangeText={setFollowingSearch}
-                  placeholder="Search following"
+                  placeholder={t('profile.searchFollowing')}
                   placeholderTextColor="rgba(255,255,255,0.35)"
                   style={{ flex: 1, marginLeft: 8, color: '#fff', fontSize: 14 }}
                   autoCapitalize="none"
@@ -697,8 +836,8 @@ export function ProfileByIdScreen() {
               </View>
               {isFollowingListLoading ? (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                  <ActivityIndicator size="large" color="#a78bfa" />
-                  <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Loading…</Text>
+                  <ActivityIndicator size="large" color="#000000" />
+                  <Text style={{ color: '#000000', fontSize: 13 }}>Loading…</Text>
                 </View>
               ) : (
                 <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
@@ -706,10 +845,10 @@ export function ProfileByIdScreen() {
                     <View style={{ alignItems: 'center', paddingTop: 56 }}>
                       <UserIcon size={48} color="#374151" strokeWidth={1.5} />
                       <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginTop: 16 }}>
-                        {followingSearch ? 'No results' : 'Not following anyone yet'}
+                        {followingSearch ? t('profile.noResults') : t('profile.notFollowing')}
                       </Text>
                       <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginTop: 6 }}>
-                        {followingSearch ? `No one matches "${followingSearch}"` : 'Discover artists to follow'}
+                        {followingSearch ? t('profile.noMatch', { query: followingSearch }) : t('profile.discoverToFollow')}
                       </Text>
                     </View>
                   ) : (
@@ -735,6 +874,11 @@ export function ProfileByIdScreen() {
         </Modal>
 
       </ScrollView>
+      <ReportSheet
+        target={reportTarget}
+        onClose={() => setReportTarget(null)}
+        onBlock={blockState === 'none' ? blockNow : undefined}
+      />
     </SafeAreaView>
   );
 }

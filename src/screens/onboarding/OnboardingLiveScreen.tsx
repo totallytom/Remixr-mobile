@@ -19,16 +19,17 @@ import {
   Music2,
   Mic2,
   Check,
-  Twitter,
   Share2,
 } from 'lucide-react-native';
 import { useStore } from '../../store/useStore';
+import { useTranslation } from 'react-i18next';
+import { genreLabel } from '../../utils/genres';
 import { MusicService } from '../../services/musicService';
 import { getAvatarUrl } from '../../utils/avatar';
 import { isMusicianRole } from '../../utils/userRole';
 
 // Adjust this to your production domain
-const APP_BASE_URL = 'https://remixr.app';
+const APP_BASE_URL = 'https://www.re-mixed.net';
 
 interface TrackPreview {
   title: string;
@@ -88,6 +89,7 @@ const ProfilePreview: React.FC<{
   genres: string[];
   track: TrackPreview | null;
 }> = ({ avatar, displayName, handle, bio, genres, track }) => {
+  const { t } = useTranslation();
   const name = displayName || handle;
   const coverSrc = track?.cover || DEFAULT_COVER;
 
@@ -121,7 +123,7 @@ const ProfilePreview: React.FC<{
           <View className="flex-1" />
           {/* Decorative follow button */}
           <View className="mb-1 px-4 py-1.5 rounded-full bg-white">
-            <Text className="text-dark-900 text-xs font-semibold">Follow</Text>
+            <Text className="text-dark-900 text-xs font-semibold">{t('common.follow')}</Text>
           </View>
         </View>
 
@@ -141,7 +143,7 @@ const ProfilePreview: React.FC<{
                 key={g}
                 className="px-2.5 py-0.5 rounded-full border border-primary-500/20 bg-primary-500/10"
               >
-                <Text className="text-xs text-primary-300">{g}</Text>
+                <Text className="text-xs text-primary-300">{genreLabel(g)}</Text>
               </View>
             ))}
           </View>
@@ -149,7 +151,7 @@ const ProfilePreview: React.FC<{
 
         {/* Stats */}
         <View className="flex-row gap-5 py-3 border-t border-white/5 mb-4">
-          {([['1', 'Track'], ['0', 'Followers'], ['0', 'Following']] as const).map(([n, l]) => (
+          {([['1', t('common.track')], ['0', t('common.followers')], ['0', t('common.following')]] as const).map(([n, l]) => (
             <View key={l} className="flex-row items-baseline gap-1">
               <Text className="text-sm font-bold text-white">{n}</Text>
               <Text className="text-xs text-white/30">{l}</Text>
@@ -161,7 +163,7 @@ const ProfilePreview: React.FC<{
         {track && (
           <View>
             <Text className="text-[10px] uppercase tracking-widest text-white/25 font-medium mb-2.5">
-              Music
+              {t('onboarding.live.music')}
             </Text>
             <View className="flex-row items-center gap-3 p-3 rounded-xl bg-dark-700/50 border border-white/5">
               <Image
@@ -174,8 +176,8 @@ const ProfilePreview: React.FC<{
                   {track.title}
                 </Text>
                 <Text className="text-xs text-white/35 mt-0.5">
-                  {track.releaseType === 'album' ? 'Album' : 'Single'}
-                  {track.genre ? ` · ${track.genre}` : ''}
+                  {track.releaseType === 'album' ? t('common.album') : t('common.single')}
+                  {track.genre ? ` · ${genreLabel(track.genre)}` : ''}
                 </Text>
               </View>
               <View className="w-8 h-8 rounded-full bg-primary-500/20 items-center justify-center">
@@ -192,6 +194,7 @@ const ProfilePreview: React.FC<{
 // ─── Share button ─────────────────────────────────────────────────────────────
 
 const ShareButton: React.FC<{ url: string; title: string }> = ({ url, title }) => {
+  const { t } = useTranslation();
   const [shared, setShared] = useState(false);
 
   const handleShare = async () => {
@@ -215,12 +218,12 @@ const ShareButton: React.FC<{ url: string; title: string }> = ({ url, title }) =
       {shared ? (
         <>
           <Check size={18} color="#fff" strokeWidth={2.5} />
-          <Text className="text-white font-semibold text-base">Link shared!</Text>
+          <Text className="text-white font-semibold text-base">{t('onboarding.live.linkShared')}</Text>
         </>
       ) : (
         <>
           <Share2 size={17} color="#fff" />
-          <Text className="text-white font-semibold text-base">Share link</Text>
+          <Text className="text-white font-semibold text-base">{t('onboarding.live.shareLink')}</Text>
         </>
       )}
     </TouchableOpacity>
@@ -233,6 +236,7 @@ const OnboardingLive: React.FC = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<OnboardingStackParamList, 'OnboardingLive'>>();
   const { user, isAuthenticated } = useStore();
+  const { t } = useTranslation();
 
   const [track, setTrack] = useState<TrackPreview | null>(null);
   const [isLoadingTrack, setIsLoadingTrack] = useState(true);
@@ -246,11 +250,11 @@ const OnboardingLive: React.FC = () => {
     MusicService.getUserTracks(user.id)
       .then((tracks) => {
         if (tracks.length > 0) {
-          const t = tracks[0];
+          const latest = tracks[0];
           setTrack({
-            title: t.title,
-            cover: t.cover ?? null,
-            genre: t.genre ?? '',
+            title: latest.title,
+            cover: latest.cover ?? null,
+            genre: latest.genre ?? '',
             releaseType: 'single',
           });
         }
@@ -263,7 +267,7 @@ const OnboardingLive: React.FC = () => {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
       <View className="flex-1 bg-dark-900 items-center justify-center">
-        <ActivityIndicator size="large" color="rgba(255,255,255,0.3)" />
+        <ActivityIndicator size="large" color="#000000" />
       </View>
       </SafeAreaView>
     );
@@ -274,7 +278,7 @@ const OnboardingLive: React.FC = () => {
     : user.id;
   const profileUrl = `${APP_BASE_URL}/profile/${profileSlug}`;
   const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
-    'Just dropped my first track on Remixr 🎵'
+    t('onboarding.live.tweet')
   )}&url=${encodeURIComponent(profileUrl)}`;
 
   const displayName = user.artistName || user.username || '';
@@ -291,14 +295,14 @@ const OnboardingLive: React.FC = () => {
         <View className="flex-row items-center gap-2.5 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 mb-5">
           <LiveDot />
           <Text className="text-xs text-emerald-300 font-semibold tracking-wide">
-            Live on Remixr
+            {t('onboarding.live.badge')}
           </Text>
         </View>
         <Text className="text-4xl font-extrabold text-white tracking-tight mb-3 text-center">
-          You're live.
+          {t('onboarding.live.title')}
         </Text>
         <Text className="text-white/40 text-base text-center max-w-xs">
-          Your music is out there. Here's what people will see when you share the link.
+          {t('onboarding.live.subtitle')}
         </Text>
       </View>
 
@@ -308,14 +312,14 @@ const OnboardingLive: React.FC = () => {
         <View className="flex-row items-center gap-3 mb-3">
           <View className="flex-1 h-px bg-white/5" />
           <Text className="text-[10px] uppercase tracking-widest text-white/25 font-medium">
-            Listener view
+            {t('onboarding.live.listenerView')}
           </Text>
           <View className="flex-1 h-px bg-white/5" />
         </View>
 
         {isLoadingTrack ? (
           <View className="rounded-2xl bg-dark-800 border border-white/8 h-64 items-center justify-center">
-            <ActivityIndicator size="small" color="rgba(255,255,255,0.2)" />
+            <ActivityIndicator size="small" color="#000000" />
           </View>
         ) : (
           <ProfilePreview
@@ -335,7 +339,7 @@ const OnboardingLive: React.FC = () => {
           {/* URL display */}
           <View>
             <Text className="text-xs text-white/30 font-medium uppercase tracking-widest mb-2">
-              Your shareable link
+              {t('onboarding.live.shareableLink')}
             </Text>
             <View className="flex-row items-center gap-2.5 px-4 py-3 rounded-xl bg-dark-700 border border-white/8">
               <View className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -350,7 +354,7 @@ const OnboardingLive: React.FC = () => {
           </View>
 
           {/* Share button */}
-          <ShareButton url={profileUrl} title={`${displayName} on Remixr`} />
+          <ShareButton url={profileUrl} title={t('onboarding.live.shareMessage', { name: displayName })} />
 
           {/* Secondary actions */}
           <View className="flex-row items-center gap-3 pt-1">
@@ -359,20 +363,20 @@ const OnboardingLive: React.FC = () => {
               className="flex-1 flex-row items-center justify-center gap-1.5 py-2.5 rounded-xl border border-white/10"
             >
               <Music2 size={14} color="rgba(255,255,255,0.5)" />
-              <Text className="text-sm text-white/50">View profile</Text>
+              <Text className="text-sm text-white/50">{t('onboarding.live.viewProfile')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => Linking.openURL(tweetUrl)}
               className="w-10 h-10 rounded-xl border border-white/10 items-center justify-center"
             >
-              <Twitter size={15} color="rgba(255,255,255,0.4)" />
+              <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 15, fontWeight: '700' }} accessibilityLabel="X">𝕏</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={async () => {
                 try {
-                  await Share.share({ url: profileUrl, message: `${displayName} on Remixr` });
+                  await Share.share({ url: profileUrl, message: t('onboarding.live.shareMessage', { name: displayName }) });
                 } catch {}
               }}
               className="w-10 h-10 rounded-xl border border-white/10 items-center justify-center"
@@ -387,7 +391,7 @@ const OnboardingLive: React.FC = () => {
           onPress={() => navigation.navigate('OnboardingUpload')}
           className="items-center py-2"
         >
-          <Text className="text-xs text-white/20 underline">Upload another track</Text>
+          <Text className="text-xs text-white/20 underline">{t('onboarding.live.uploadAnother')}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

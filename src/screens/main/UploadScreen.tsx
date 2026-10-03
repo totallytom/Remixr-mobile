@@ -1,13 +1,12 @@
 /**
  * UploadScreen — React Native
  *
- * Requires two Expo packages not yet in package.json:
- *   expo install expo-document-picker expo-image-picker
- *
- * Note: UploadStack.tsx imports from 'UploaddScreen' (double-d typo) — fix that import to 'UploadScreen'.
+ * Two steps: (1) audio files, cover art and track details, (2) Rights & Ownership.
+ * Publishing is handled by trackUploadService.publishRelease().
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '../../theme'
 import {
   View,
   Text,
@@ -17,11 +16,9 @@ import {
   Image,
   Alert,
   ActivityIndicator,
-  Modal,
-  Pressable,
   Switch,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { UploadStackParamList } from '../../navigation/stacks/UploadStack';
 import {
@@ -34,51 +31,54 @@ import {
   CloudUpload,
   ChevronUp,
   ChevronDown,
+  ChevronLeft,
+  ArrowRight,
 } from 'lucide-react-native';
-import { Audio } from 'expo-av';
+import type { AudioPlayer } from 'expo-audio';
+import { createPreviewPlayer, releasePlayer } from '../../services/audio';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useStore } from '../../store/useStore';
-import { supabase } from '../../services/supabase';
 import { checkCopyright } from '../../services/copyrightService';
 import { BoostService } from '../../services/boostService';
+import {
+  ACCEPTED_AUDIO_MIME,
+  FREE_ALBUM_LIMIT,
+  FREE_TRACK_LIMIT,
+  MAX_AUDIO_MB,
+  MAX_TRACKS_PER_UPLOAD as MAX_TRACKS,
+  emptyRightsDeclaration,
+  fetchUploadCounts,
+  freePlanLimitError,
+  hasUnlimitedUploads,
+  formatDuration,
+  getAudioDuration,
+  publishRelease,
+  validateRights,
+  type PickedFile,
+  type RightsDeclaration,
+  type UploadCounts,
+} from '../../services/trackUploadService';
+import RightsOwnershipStep from '../../components/upload/RightsOwnershipStep';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
+import { genreLabel } from '../../utils/genres';
 
 const GENRES = [
   'Electronic', 'Pop', 'Rock', 'Hip Hop', 'R&B', 'Jazz', 'Classical',
   'Country', 'Folk', 'Alternative', 'Experimental', 'Reggae', 'Blues',
 ];
 
-const MAX_TRACKS = 20;
-const FREE_TRACK_LIMIT = 10;
-const FREE_ALBUM_LIMIT = 2;
-
-const ACCEPTED_AUDIO_MIME = [
-  'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/aiff',
-  'audio/x-aiff', 'audio/mp4', 'audio/x-m4a',
-];
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-interface RNFile {
-  uri: string;
-  name: string;
-  size: number;
-  mimeType?: string;
-}
-
 export interface TrackEntry {
   id: string;
-  file: RNFile;
+  file: PickedFile;
   title: string;
   duration: number;
   order: number;
+  isrc: string;
 }
 
-function createTrackEntry(file: RNFile, order: number): TrackEntry {
+function createTrackEntry(file: PickedFile, order: number): TrackEntry {
   const baseName = file.name.replace(/\.[^.]+$/, '') || `Track ${order}`;
   return {
     id: `track-${Date.now()}-${order}-${Math.random().toString(36).slice(2)}`,
@@ -86,59 +86,49 @@ function createTrackEntry(file: RNFile, order: number): TrackEntry {
     title: baseName,
     duration: 0,
     order,
+    isrc: '',
   };
 }
 
-async function getAudioDurationFromUri(uri: string): Promise<number> {
-  try {
-    const { sound, status } = await Audio.Sound.createAsync(
-      { uri },
-      { shouldPlay: false }
-    );
-    await sound.unloadAsync();
-    if (status.isLoaded && status.durationMillis != null) {
-      return Math.floor(status.durationMillis / 1000);
-    }
-  } catch {
-    // Duration stays 0
-  }
-  return 0;
-}
-
-async function uploadToSupabase(
-  uri: string,
-  path: string,
-  contentType: string
-): Promise<{ data: { path: string } | null; error: { message: string } | null }> {
-  const response = await fetch(uri);
-  const blob = await response.blob();
-  return supabase.storage.from('music-files').upload(path, blob, { contentType, upsert: false });
-}
+const AppText: React.FC<React.ComponentProps<typeof Text>> = ({ style, ...props }) => (
+  <Text
+    style={[
+      { fontFamily: 'MaruMinyaHangul' },
+      ...(Array.isArray(style) ? style : style ? [style] : []),
+    ]}
+    {...props}
+  />
+);
 
 // ─── Unified upload content ───────────────────────────────────────────────────
 
 const UnifiedUploadContent: React.FC = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation<NativeStackNavigationProp<UploadStackParamList, 'Upload'>>();
   const { user } = useStore();
 
+  const [step, setStep] = useState<'details' | 'rights'>('details');
   const [tracks, setTracks] = useState<TrackEntry[]>([]);
   const [albumTitle, setAlbumTitle] = useState('');
   const [artist, setArtist] = useState(user?.username || '');
   const [genre, setGenre] = useState('');
-  const [coverImage, setCoverImage] = useState<RNFile | null>(null);
+  const [coverImage, setCoverImage] = useState<PickedFile | null>(null);
   const [singleTitle, setSingleTitle] = useState('');
   const [singleAlbumName, setSingleAlbumName] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isCheckingDetails, setIsCheckingDetails] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dropError, setDropError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const [expandedImage, setExpandedImage] = useState<string | null>(null);
-  const [uploadCounts, setUploadCounts] = useState<{ trackCount: number; albumCount: number } | null>(null);
+  const [sound, setSound] = useState<AudioPlayer | null>(null);
+  const [uploadCounts, setUploadCounts] = useState<UploadCounts | null>(null);
   const [challengesOpen, setChallengesOpen] = useState(false);
-  const [copyrightAcknowledged, setCopyrightAcknowledged] = useState(false);
+  const [isExplicit, setIsExplicit] = useState(false);
+  const [rights, setRights] = useState<RightsDeclaration>(() =>
+    emptyRightsDeclaration(user?.artistName || user?.username || ''),
+  );
 
-  const isPro = user?.subscriptionTier === 'pro';
+  const isPro = hasUnlimitedUploads(user?.subscriptionTier);
   const atTrackLimit = !isPro && (uploadCounts?.trackCount ?? 0) >= FREE_TRACK_LIMIT;
   const atAlbumLimit = !isPro && (uploadCounts?.albumCount ?? 0) >= FREE_ALBUM_LIMIT;
   const isSingle = tracks.length === 1;
@@ -148,26 +138,55 @@ const UnifiedUploadContent: React.FC = () => {
     setArtist(user?.username || '');
   }, [user?.username]);
 
-  // Unload audio on unmount
+  const refreshUploadCounts = useCallback(async () => {
+    if (!user?.id) return null;
+    try {
+      const counts = await fetchUploadCounts(user.id);
+      setUploadCounts(counts);
+      return counts;
+    } catch {
+      return null;
+    }
+  }, [user?.id]);
+
+  // Refetch on every tab focus so uploads/removals made elsewhere are reflected.
+  useFocusEffect(
+    useCallback(() => {
+      refreshUploadCounts();
+    }, [refreshUploadCounts]),
+  );
+
+  // Unload preview audio on unmount / when replaced
   useEffect(() => {
     return () => {
-      sound?.unloadAsync();
+      releasePlayer(sound);
     };
   }, [sound]);
 
   const setTrackTitle = (id: string, title: string) =>
     setTracks((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
 
+  const setTrackIsrc = (id: string, isrc: string) =>
+    setTracks((prev) => prev.map((t) => (t.id === id ? { ...t, isrc } : t)));
+
+  const stopPreview = () => {
+    sound?.pause();
+    setSound(null); // the effect above releases it
+    setIsPlaying(false);
+  };
+
   const removeTrack = (id: string) => {
     const next = tracks.filter((t) => t.id !== id);
     if (next.length === 0) {
       clearAll();
     } else {
+      if (tracks[0]?.id === id) stopPreview();
       setTracks(next.map((t, i) => ({ ...t, order: i + 1 })));
     }
   };
 
   const clearAll = () => {
+    setStep('details');
     setTracks([]);
     setAlbumTitle('');
     setSingleTitle('');
@@ -175,9 +194,10 @@ const UnifiedUploadContent: React.FC = () => {
     setCoverImage(null);
     setDropError(null);
     setUploadProgress(0);
-    setCopyrightAcknowledged(false);
-    sound?.pauseAsync().catch(() => {});
-    setIsPlaying(false);
+    setIsExplicit(false);
+    setChallengesOpen(false);
+    setRights(emptyRightsDeclaration(user?.artistName || user?.username || ''));
+    stopPreview();
   };
 
   const moveTrack = (id: string, direction: 'up' | 'down') => {
@@ -194,10 +214,7 @@ const UnifiedUploadContent: React.FC = () => {
 
   const pickAudioFiles = async () => {
     if (atTrackLimit) {
-      Alert.alert(
-        'Track limit reached',
-        `Free plan is capped at ${FREE_TRACK_LIMIT} tracks. Upgrade to Pro for unlimited uploads.`
-      );
+      Alert.alert(t('upload.trackLimitTitle'), t('upload.trackLimitBody', { limit: FREE_TRACK_LIMIT }));
       return;
     }
     setDropError(null);
@@ -209,13 +226,17 @@ const UnifiedUploadContent: React.FC = () => {
       });
       if (result.canceled || !result.assets?.length) return;
 
-      const files: RNFile[] = result.assets.map((a) => ({
+      const files: PickedFile[] = result.assets.map((a) => ({
         uri: a.uri,
         name: a.name,
         size: a.size ?? 0,
         mimeType: a.mimeType,
       }));
 
+      if (files.some((f) => f.size > MAX_AUDIO_MB * 1024 * 1024)) {
+        setDropError(t('upload.audioTooBig', { mb: MAX_AUDIO_MB }));
+        return;
+      }
       if (!isPro) {
         const alreadyUploaded = uploadCounts?.trackCount ?? 0;
         const wouldTotal = alreadyUploaded + tracks.length + files.length;
@@ -223,14 +244,14 @@ const UnifiedUploadContent: React.FC = () => {
           const remaining = Math.max(0, FREE_TRACK_LIMIT - alreadyUploaded - tracks.length);
           setDropError(
             remaining === 0
-              ? `You've reached the free plan limit of ${FREE_TRACK_LIMIT} tracks.`
-              : `You can add ${remaining} more track${remaining === 1 ? '' : 's'} on the free plan.`
+              ? t('upload.reachedLimit', { limit: FREE_TRACK_LIMIT })
+              : t('upload.canAdd', { count: remaining })
           );
           return;
         }
       }
       if (tracks.length + files.length > MAX_TRACKS) {
-        setDropError(`Maximum ${MAX_TRACKS} tracks per upload.`);
+        setDropError(t('upload.maxPerUpload', { max: MAX_TRACKS }));
         return;
       }
 
@@ -242,14 +263,12 @@ const UnifiedUploadContent: React.FC = () => {
 
       // Resolve durations in background
       newEntries.forEach((entry) => {
-        getAudioDurationFromUri(entry.file.uri).then((dur) => {
-          setTracks((prev) =>
-            prev.map((t) => (t.id === entry.id ? { ...t, duration: dur } : t))
-          );
+        getAudioDuration(entry.file.uri).then((dur) => {
+          setTracks((prev) => prev.map((t) => (t.id === entry.id ? { ...t, duration: dur } : t)));
         });
       });
-    } catch (error) {
-      setDropError('Failed to pick files. Please try again.');
+    } catch {
+      setDropError(t('upload.pickFailed'));
     }
   };
 
@@ -270,7 +289,7 @@ const UnifiedUploadContent: React.FC = () => {
         mimeType: asset.mimeType ?? 'image/jpeg',
       });
     } catch {
-      Alert.alert('Error', 'Failed to pick image.');
+      Alert.alert(t('common.error'), t('upload.pickImageFailed'));
     }
   };
 
@@ -279,251 +298,233 @@ const UnifiedUploadContent: React.FC = () => {
     try {
       if (sound) {
         if (isPlaying) {
-          await sound.pauseAsync();
+          sound.pause();
           setIsPlaying(false);
         } else {
-          await sound.playAsync();
+          sound.play();
           setIsPlaying(true);
         }
       } else {
-        const { sound: newSound } = await Audio.Sound.createAsync(
-          { uri: tracks[0].file.uri },
-          { shouldPlay: true }
-        );
-        newSound.setOnPlaybackStatusUpdate((status) => {
-          if (status.isLoaded && status.didJustFinish) setIsPlaying(false);
+        const newSound = createPreviewPlayer(tracks[0].file.uri, (status) => {
+          if (status.didJustFinish) setIsPlaying(false);
         });
+        newSound.play();
         setSound(newSound);
         setIsPlaying(true);
       }
     } catch {
-      Alert.alert('Playback error', 'Could not play the selected file.');
+      Alert.alert(t('upload.playbackErrorTitle'), t('upload.playbackError'));
     }
   };
 
-  const submitSingle = async () => {
-    if (!user || tracks.length !== 1) return;
-    if (!isPro && (uploadCounts?.trackCount ?? 0) >= FREE_TRACK_LIMIT) {
-      Alert.alert('Upload limit reached', `Free plan is limited to ${FREE_TRACK_LIMIT} tracks. Upgrade to Pro for unlimited uploads.`);
-      return;
-    }
-    if (!singleTitle.trim() || !artist.trim() || !genre) {
-      Alert.alert('Missing fields', 'Please fill in Title, Artist, and Genre.');
-      return;
-    }
-    // Copyright check passes file metadata only (no actual File object on mobile)
-    try {
-      const result = await checkCopyright(tracks[0].file as any, { title: singleTitle, artist });
-      if (result.blocked) {
-        Alert.alert('Copyright', result.reason || 'This upload was blocked by our copyright policy.');
+  // Step 1 → 2: check required details, limits and copyright before asking for rights.
+  const continueToRights = async () => {
+    if (!user || tracks.length === 0) return;
+    if (isSingle) {
+      if (!singleTitle.trim() || !artist.trim() || !genre) {
+        Alert.alert(t('upload.missingFields'), t('upload.missingSingle'));
         return;
       }
-    } catch {
-      Alert.alert('Error', 'Copyright check failed. Please try again.');
-      return;
+    } else {
+      if (!albumTitle.trim() || !artist.trim() || !genre) {
+        Alert.alert(t('upload.missingFields'), t('upload.missingAlbum'));
+        return;
+      }
+      if (tracks.some((t) => !t.title.trim())) {
+        Alert.alert(t('upload.missingFields'), t('upload.missingTrackTitle'));
+        return;
+      }
+      if (!coverImage) {
+        Alert.alert(t('upload.missingCoverTitle'), t('upload.missingCover'));
+        return;
+      }
     }
-    setIsUploading(true);
-    setUploadProgress(0);
-    const interval = setInterval(() => setUploadProgress((p) => (p >= 90 ? 90 : p + 10)), 200);
+
+    setIsCheckingDetails(true);
     try {
-      const sanitized = tracks[0].file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const fileName = `audio-files/${user.id}/${Date.now()}-${sanitized}`;
-      const contentType = tracks[0].file.mimeType ?? 'audio/mpeg';
-      const { data: audioData, error: audioError } = await uploadToSupabase(
-        tracks[0].file.uri,
-        fileName,
-        contentType
-      );
-      if (audioError || !audioData?.path) throw new Error(audioError?.message ?? 'Audio upload failed');
-      const { data: audioUrlData } = supabase.storage.from('music-files').getPublicUrl(audioData.path);
-      const audioUrl = audioUrlData.publicUrl;
-
-      let imageUrl = '';
-      if (coverImage) {
-        const sanitizedCover = coverImage.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const coverPath = `playlist-covers/${user.id}/${Date.now()}-${sanitizedCover}`;
-        const { data: imgData, error: imgErr } = await uploadToSupabase(
-          coverImage.uri,
-          coverPath,
-          coverImage.mimeType ?? 'image/jpeg'
-        );
-        if (imgErr || !imgData?.path) throw new Error(imgErr?.message ?? 'Cover upload failed');
-        imageUrl = supabase.storage.from('music-files').getPublicUrl(imgData.path).data.publicUrl;
+      if (!isPro) {
+        // Fresh counts, not the ones loaded on focus: another device may have uploaded since.
+        const counts = await refreshUploadCounts();
+        if (!counts) {
+          Alert.alert(t('common.error'), t('upload.limitsCheckFailed'));
+          return;
+        }
+        const limitError = freePlanLimitError(counts, tracks.length, isAlbum);
+        if (limitError) {
+          Alert.alert(t('upload.limitReachedTitle'), limitError);
+          return;
+        }
       }
-
-      const { data: trackData, error: trackError } = await supabase
-        .from('tracks')
-        .insert({
-          title: singleTitle,
-          artist,
-          album: singleAlbumName,
-          duration: tracks[0].duration,
-          cover: imageUrl || 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=400&fit=crop',
-          audio_url: audioUrl,
-          genre,
-          user_id: user.id,
-          preview_start_sec: 0,
-          preview_duration_sec: 20,
-          challenges_open: challengesOpen,
-        })
-        .select('id')
-        .single();
-      if (trackError) throw new Error(`Failed to save track: ${trackError.message}`);
-
-      if (isPro && trackData?.id) {
-        BoostService.boostTrack(trackData.id, user.id).catch(() => {});
+      for (const track of tracks) {
+        const result = await checkCopyright({ title: isSingle ? singleTitle : track.title, artist });
+        if (result.blocked) {
+          Alert.alert(t('upload.copyright'), result.reason || t('upload.blocked', { title: track.title }));
+          return;
+        }
       }
-
-      clearInterval(interval);
-      setUploadProgress(100);
-      setIsUploading(false);
-      Alert.alert('Track uploaded', 'Your track is now live.');
-      clearAll();
-    } catch (error) {
-      clearInterval(interval);
-      setIsUploading(false);
-      Alert.alert('Upload failed', error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setIsCheckingDetails(false);
     }
+    stopPreview();
+    setStep('rights');
   };
 
-  const submitAlbum = async () => {
-    if (!user || tracks.length < 2) return;
-    if (!isPro) {
-      if ((uploadCounts?.albumCount ?? 0) >= FREE_ALBUM_LIMIT) {
-        Alert.alert('Album limit reached', `Free plan is limited to ${FREE_ALBUM_LIMIT} albums. Upgrade to Pro.`);
-        return;
-      }
-      if ((uploadCounts?.trackCount ?? 0) + tracks.length > FREE_TRACK_LIMIT) {
-        Alert.alert('Track limit reached', `This album would exceed your free plan track limit of ${FREE_TRACK_LIMIT}. Upgrade to Pro.`);
-        return;
-      }
-    }
-    if (!albumTitle.trim() || !artist.trim() || !genre) {
-      Alert.alert('Missing fields', 'Please fill in Album Title, Artist, and Genre.');
+  const submit = async () => {
+    if (!user || tracks.length === 0) return;
+    const rightsError = validateRights(rights, tracks);
+    if (rightsError) {
+      Alert.alert(t('rights.heading'), rightsError);
       return;
     }
-    if (!coverImage) {
-      Alert.alert('Missing cover', 'Please select an album cover image.');
-      return;
-    }
+
     setIsUploading(true);
     setUploadProgress(0);
-    const interval = setInterval(() => setUploadProgress((p) => (p >= 90 ? 90 : p + 10)), 200);
     try {
-      const sanitizedCover = coverImage.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const coverPath = `playlist-covers/${user.id}/${Date.now()}-${sanitizedCover}`;
-      const { data: coverData, error: coverErr } = await uploadToSupabase(
-        coverImage.uri,
-        coverPath,
-        coverImage.mimeType ?? 'image/jpeg'
+      const { trackIds, status } = await publishRelease({
+        userId: user.id,
+        artist,
+        genre,
+        cover: coverImage,
+        album: isAlbum ? { title: albumTitle.trim() } : null,
+        singleAlbumName: isSingle ? singleAlbumName : undefined,
+        tracks: isSingle ? [{ ...tracks[0], title: singleTitle }] : tracks,
+        rights,
+        challengesOpen: isSingle ? challengesOpen : false,
+        isExplicit,
+        onProgress: setUploadProgress,
+      });
+
+      if (isPro && status === 'published') {
+        trackIds.forEach((id) => BoostService.boostTrack(id, user.id).catch(() => {}));
+      }
+
+      Alert.alert(
+        t(isAlbum ? 'upload.albumUploaded' : 'upload.trackUploaded'),
+        status === 'published'
+          ? t(isAlbum ? 'upload.albumLive' : 'upload.trackLive')
+          : t(isAlbum ? 'upload.albumReview' : 'upload.trackReview'),
       );
-      if (coverErr || !coverData?.path) throw new Error(coverErr?.message ?? 'Cover upload failed');
-      const coverUrl = supabase.storage.from('music-files').getPublicUrl(coverData.path).data.publicUrl;
-      setUploadProgress(20);
-
-      const sortedTracks = [...tracks].sort((a, b) => a.order - b.order);
-      const uploadedTracks: {
-        title: string; duration: number; audio_url: string;
-        order: number; preview_start_sec: number; preview_duration_sec: number;
-      }[] = [];
-
-      for (let i = 0; i < sortedTracks.length; i++) {
-        const track = sortedTracks[i];
-        const sanitized = track.file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const fileName = `audio-files/${user.id}/${Date.now()}-${i}-${sanitized}`;
-        const { data: tData, error: tErr } = await uploadToSupabase(
-          track.file.uri,
-          fileName,
-          track.file.mimeType ?? 'audio/mpeg'
-        );
-        if (tErr || !tData?.path) throw new Error(`Failed to upload track ${i + 1}: ${tErr?.message}`);
-        const audioUrl = supabase.storage.from('music-files').getPublicUrl(tData.path).data.publicUrl;
-        uploadedTracks.push({
-          title: track.title,
-          duration: track.duration,
-          audio_url: audioUrl,
-          order: track.order,
-          preview_start_sec: 0,
-          preview_duration_sec: 20,
-        });
-        setUploadProgress(20 + ((i + 1) / sortedTracks.length) * 50);
-      }
-
-      const { data: albumData, error: albumError } = await supabase
-        .from('albums')
-        .insert({
-          title: albumTitle,
-          artist,
-          cover: coverUrl,
-          genre,
-          user_id: user.id,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-      if (albumError) throw new Error(`Failed to create album: ${albumError.message}`);
-      setUploadProgress(70);
-
-      const { data: insertedTracks, error: tracksError } = await supabase
-        .from('tracks')
-        .insert(
-          uploadedTracks.map((t) => ({
-            title: t.title,
-            artist,
-            album: albumTitle,
-            duration: t.duration,
-            cover: coverUrl,
-            audio_url: t.audio_url,
-            genre,
-            user_id: user.id,
-            album_id: albumData.id,
-            preview_start_sec: t.preview_start_sec,
-            preview_duration_sec: t.preview_duration_sec,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }))
-        )
-        .select('id');
-      if (tracksError) throw new Error(`Failed to create tracks: ${tracksError.message}`);
-
-      if (isPro && insertedTracks?.length) {
-        insertedTracks.forEach((t) => BoostService.boostTrack(t.id, user.id).catch(() => {}));
-      }
-
-      clearInterval(interval);
-      setUploadProgress(100);
-      setIsUploading(false);
-      Alert.alert('Album uploaded', 'Your album is now live.');
       clearAll();
+      refreshUploadCounts();
     } catch (error) {
-      clearInterval(interval);
+      Alert.alert(t('upload.failed'), error instanceof Error ? error.message : t('upload.unknownError'));
+    } finally {
       setIsUploading(false);
-      Alert.alert('Upload failed', error instanceof Error ? error.message : 'Failed to upload album');
     }
   };
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
+  if (step === 'rights') {
+    return (
+      <ScrollView
+        className="flex-1"
+        style={{ backgroundColor: colors.background }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View className="gap-4">
+          <TouchableOpacity
+            onPress={() => setStep('details')}
+            disabled={isUploading}
+            className="flex-row items-center gap-1 self-start"
+          >
+            <ChevronLeft size={18} color={colors.textSecondary} />
+            <AppText className="text-sm" style={{ color: colors.textSecondary }}>{t('upload.backToDetails')}</AppText>
+          </TouchableOpacity>
+
+          <View
+            className="flex-row items-center gap-3 rounded-xl p-3 border"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          >
+            {coverImage ? (
+              <Image source={{ uri: coverImage.uri }} className="w-12 h-12 rounded-lg" />
+            ) : (
+              <View className="w-12 h-12 rounded-lg items-center justify-center" style={{ backgroundColor: colors.primary + '33' }}>
+                <Music size={20} color={colors.textSecondary} />
+              </View>
+            )}
+            <View className="flex-1 min-w-0">
+              <AppText className="font-medium" numberOfLines={1} style={{ color: colors.text }}>
+                {isAlbum ? albumTitle : singleTitle}
+              </AppText>
+              <AppText className="text-xs" style={{ color: colors.textMuted }}>
+                {artist} · {isAlbum ? t('upload.albumMeta', { count: tracks.length }) : t('upload.single')}
+              </AppText>
+            </View>
+          </View>
+
+          <View
+            className="rounded-2xl border p-5"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          >
+            <RightsOwnershipStep
+              value={rights}
+              onChange={setRights}
+              isrcTracks={tracks.map((t) => ({ id: t.id, title: isSingle ? singleTitle : t.title, isrc: t.isrc }))}
+              onIsrcChange={setTrackIsrc}
+            />
+          </View>
+
+          {isUploading && <ProgressBar progress={uploadProgress} label={t('upload.uploading')} />}
+
+          <TouchableOpacity
+            onPress={submit}
+            disabled={isUploading || rights.samplesStatus === 'uncleared'}
+            className="flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-xl"
+            style={{
+              backgroundColor: colors.accent,
+              opacity: isUploading || rights.samplesStatus === 'uncleared' ? 0.4 : 1,
+            }}
+          >
+            {isUploading ? <ActivityIndicator size="small" color="#fff" /> : <Save size={18} color="#fff" />}
+            <AppText className="font-medium text-black">
+              {isUploading ? t('upload.uploading') : isAlbum ? t('upload.uploadAlbum') : t('upload.uploadTrack')}
+            </AppText>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  const continueButton = (
+    <TouchableOpacity
+      onPress={continueToRights}
+      disabled={isCheckingDetails || (isAlbum && atAlbumLimit)}
+      className="flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-xl"
+      style={{ backgroundColor: colors.accent, opacity: isCheckingDetails || (isAlbum && atAlbumLimit) ? 0.4 : 1 }}
+    >
+      {isCheckingDetails ? <ActivityIndicator size="small" color="#fff" /> : null}
+      <AppText className="font-medium text-black">{t('upload.continueRights')}</AppText>
+      {!isCheckingDetails ? <ArrowRight size={18} color="#000" /> : null}
+    </TouchableOpacity>
+  );
+
   return (
-    <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
+    <ScrollView
+      className="flex-1"
+      style={{ backgroundColor: colors.background }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
+      keyboardShouldPersistTaps="handled"
+    >
       <View className="gap-6">
         {/* Upload limits bar */}
         {!isPro && uploadCounts && (
-          <View className="flex-row items-center justify-between bg-dark-800 rounded-xl px-4 py-3 border border-dark-700">
-            <Text className="text-xs text-gray-400">
-              <Text className={atTrackLimit ? 'text-amber-400 font-medium' : 'text-gray-300'}>
-                {uploadCounts.trackCount}/{FREE_TRACK_LIMIT} tracks
-              </Text>
+          <View
+            className="flex-row items-center justify-between rounded-xl px-4 py-3 border"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          >
+            <AppText className="text-xs" style={{ color: colors.textSecondary }}>
+              <AppText className={atTrackLimit ? 'text-amber-500 font-medium' : ''} style={atTrackLimit ? {} : { color: colors.text }}>
+                {t('upload.tracksCount', { count: uploadCounts.trackCount, limit: FREE_TRACK_LIMIT })}
+              </AppText>
               {'  ·  '}
-              <Text className={atAlbumLimit ? 'text-amber-400 font-medium' : 'text-gray-300'}>
-                {uploadCounts.albumCount}/{FREE_ALBUM_LIMIT} albums
-              </Text>
-            </Text>
-            <TouchableOpacity
-              onPress={() => (navigation.getParent() as any)?.navigate('ProfileTab')}
-            >
-              <Text className="text-violet-400 text-xs font-medium">Go Pro →</Text>
+              <AppText className={atAlbumLimit ? 'text-amber-500 font-medium' : ''} style={atAlbumLimit ? {} : { color: colors.text }}>
+                {t('upload.albumsCount', { count: uploadCounts.albumCount, limit: FREE_ALBUM_LIMIT })}
+              </AppText>
+            </AppText>
+            <TouchableOpacity onPress={() => (navigation.getParent() as any)?.navigate('ProfileTab')}>
+              <AppText className="text-xs font-medium" style={{ color: colors.primary }}>{t('upload.goArtist')}</AppText>
             </TouchableOpacity>
           </View>
         )}
@@ -532,229 +533,236 @@ const UnifiedUploadContent: React.FC = () => {
         {atTrackLimit ? (
           <View className="rounded-2xl border-2 border-amber-600/40 bg-amber-950/30 p-8 items-center">
             <Lock size={36} color="#f59e0b" />
-            <Text className="text-white font-semibold mt-3 mb-1">Track limit reached</Text>
-            <Text className="text-gray-400 text-sm text-center mb-4">
-              Free plan is capped at {FREE_TRACK_LIMIT} tracks. Upgrade to Pro for unlimited uploads.
-            </Text>
+            <AppText className="font-semibold mt-3 mb-1" style={{ color: colors.text }}>{t('upload.trackLimitTitle')}</AppText>
+            <AppText className="text-sm text-center mb-4" style={{ color: colors.textSecondary }}>
+              {t('upload.trackLimitBody', { limit: FREE_TRACK_LIMIT })}
+            </AppText>
             <TouchableOpacity
               onPress={() => (navigation.getParent() as any)?.navigate('ProfileTab')}
-              className="px-5 py-2.5 rounded-xl bg-violet-600"
+              className="px-5 py-2.5 rounded-xl"
+              style={{ backgroundColor: colors.accent }}
             >
-              <Text className="text-white text-sm font-medium">Upgrade to Pro</Text>
+              <AppText className="text-black text-sm font-medium">{t('upload.upgrade')}</AppText>
             </TouchableOpacity>
           </View>
         ) : (
           <TouchableOpacity
             onPress={pickAudioFiles}
-            className="rounded-2xl border-2 border-dashed border-dark-600 bg-dark-800/50 p-8 items-center"
+            className="rounded-2xl border-2 border-dashed p-8 items-center"
+            style={{ borderColor: colors.border, backgroundColor: colors.surface }}
           >
-            <CloudUpload size={40} color="#6b7280" />
-            <Text className="text-white font-medium mt-3 mb-1">Select audio files</Text>
-            <Text className="text-gray-500 text-sm text-center">
-              MP3, WAV, AIFF, M4A
+            <CloudUpload size={40} color={colors.textMuted} />
+            <AppText className="font-medium mt-3 mb-1" style={{ color: colors.text }}>{t('upload.selectFiles')}</AppText>
+            <AppText className="text-sm text-center" style={{ color: colors.textMuted }}>
+              {t('upload.formats', { mb: MAX_AUDIO_MB })}
               {!isPro && uploadCounts
-                ? ` · ${FREE_TRACK_LIMIT - uploadCounts.trackCount} track${FREE_TRACK_LIMIT - uploadCounts.trackCount === 1 ? '' : 's'} remaining`
-                : ` · Up to ${MAX_TRACKS} tracks`}
-            </Text>
-            <Text className="text-gray-600 text-xs mt-2">
-              1 file = single track · 2+ files = album
-            </Text>
+                ? t('upload.remaining', { count: FREE_TRACK_LIMIT - uploadCounts.trackCount })
+                : t('upload.upTo', { max: MAX_TRACKS })}
+            </AppText>
+            <AppText className="text-xs mt-2" style={{ color: colors.textMuted }}>
+              {t('upload.singleVsAlbum')}
+            </AppText>
           </TouchableOpacity>
         )}
 
         {dropError && (
-          <Text className="text-red-400 text-sm px-1">{dropError}</Text>
+          <AppText className="text-red-500 text-sm px-1">{dropError}</AppText>
         )}
 
         {/* Track list summary */}
         {tracks.length > 0 && (
           <View className="flex-row items-center justify-between">
-            <Text className="text-gray-400 text-sm">
-              {tracks.length} file{tracks.length > 1 ? 's' : ''} selected
-            </Text>
+            <AppText className="text-sm" style={{ color: colors.textSecondary }}>
+              {t('upload.filesSelected', { count: tracks.length })}
+            </AppText>
             <TouchableOpacity onPress={clearAll}>
-              <Text className="text-violet-400 text-sm">Clear all</Text>
+              <AppText className="text-sm font-medium" style={{ color: colors.primary }}>{t('upload.clearAll')}</AppText>
             </TouchableOpacity>
           </View>
         )}
 
         {/* ── Single track form ── */}
         {isSingle && (
-          <View className="rounded-2xl bg-dark-800 border border-dark-700 p-5 gap-4">
-            <Text className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Single Track
-            </Text>
+          <View
+            className="rounded-2xl border p-5 gap-4"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          >
+            <AppText
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{ color: colors.textMuted }}
+            >
+              {t('upload.singleTrack')}
+            </AppText>
 
             {/* File row */}
-            <View className="flex-row items-center gap-3 bg-dark-700 rounded-xl p-3">
-              <View className="w-10 h-10 rounded-lg bg-violet-900/60 items-center justify-center">
-                <Music size={20} color="#7c3aed" />
+            <View
+              className="flex-row items-center gap-3 rounded-xl p-3"
+              style={{ backgroundColor: colors.surfaceElevated }}
+            >
+              <View
+                className="w-10 h-10 rounded-lg items-center justify-center"
+                style={{ backgroundColor: colors.primary + '33' }}
+              >
+                <Music size={20} color={colors.textSecondary} />
               </View>
               <View className="flex-1 min-w-0">
-                <Text className="text-white font-medium" numberOfLines={1}>
+                <AppText className="font-medium" numberOfLines={1} style={{ color: colors.text }}>
                   {tracks[0].file.name}
-                </Text>
-                <Text className="text-gray-500 text-xs">
+                </AppText>
+                <AppText className="text-xs" style={{ color: colors.textMuted }}>
                   {formatDuration(tracks[0].duration)}
-                </Text>
+                </AppText>
               </View>
               <TouchableOpacity
                 onPress={handlePlayPause}
-                className="p-2 rounded-lg bg-violet-600"
-              >
-                {isPlaying ? (
-                  <Pause size={18} color="#fff" />
-                ) : (
-                  <Play size={18} color="#fff" />
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => removeTrack(tracks[0].id)}
                 className="p-2 rounded-lg"
+                style={{ backgroundColor: colors.accent }}
               >
+                {isPlaying ? <Pause size={18} color="#fff" /> : <Play size={18} color="#fff" />}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => removeTrack(tracks[0].id)} className="p-2 rounded-lg">
                 <X size={18} color="#ef4444" />
               </TouchableOpacity>
             </View>
 
             <View className="gap-1">
-              <Text className="text-sm font-medium text-gray-300">Title *</Text>
+              <AppText className="text-sm font-medium" style={{ color: colors.text }}>{t('upload.titleReq')}</AppText>
               <TextInput
                 value={singleTitle}
                 onChangeText={(v) => {
                   setSingleTitle(v);
                   setTrackTitle(tracks[0].id, v);
                 }}
-                placeholder="Track title"
-                placeholderTextColor="#6b7280"
-                className="px-4 py-3 rounded-xl bg-dark-700 border border-dark-600 text-white"
+                placeholder={t('upload.trackTitle')}
+                placeholderTextColor={colors.textMuted}
+                className="px-4 py-3 rounded-xl border"
+                style={{ backgroundColor: colors.surfaceElevated, borderColor: colors.border, color: colors.text }}
               />
             </View>
 
             <View className="gap-1">
-              <Text className="text-sm font-medium text-gray-300">Artist *</Text>
+              <AppText className="text-sm font-medium" style={{ color: colors.text }}>{t('upload.artistReq')}</AppText>
               <TextInput
                 value={artist}
                 onChangeText={setArtist}
-                placeholder="Artist name"
-                placeholderTextColor="#6b7280"
-                className="px-4 py-3 rounded-xl bg-dark-700 border border-dark-600 text-white"
+                placeholder={t('upload.artistName')}
+                placeholderTextColor={colors.textMuted}
+                className="px-4 py-3 rounded-xl border"
+                style={{ backgroundColor: colors.surfaceElevated, borderColor: colors.border, color: colors.text }}
               />
             </View>
 
             <View className="gap-1">
-              <Text className="text-sm font-medium text-gray-300">Album</Text>
+              <AppText className="text-sm font-medium" style={{ color: colors.text }}>{t('upload.album')}</AppText>
               <TextInput
                 value={singleAlbumName}
                 onChangeText={setSingleAlbumName}
-                placeholder="Album name (optional)"
-                placeholderTextColor="#6b7280"
-                className="px-4 py-3 rounded-xl bg-dark-700 border border-dark-600 text-white"
+                placeholder={t('upload.albumOptional')}
+                placeholderTextColor={colors.textMuted}
+                className="px-4 py-3 rounded-xl border"
+                style={{ backgroundColor: colors.surfaceElevated, borderColor: colors.border, color: colors.text }}
               />
             </View>
 
             <GenreSelector value={genre} onChange={setGenre} />
 
-            <View className="flex-row items-center justify-between py-1">
-              <View className="flex-1 mr-4">
-                <Text className="text-sm font-medium text-gray-300">Allow Challenges</Text>
-                <Text className="text-xs text-gray-500 mt-0.5">Let other artists record responses to this track</Text>
-              </View>
-              <Switch
-                value={challengesOpen}
-                onValueChange={setChallengesOpen}
-                trackColor={{ false: '#374151', true: '#7c3aed' }}
-                thumbColor="#fff"
-              />
-            </View>
+            <ToggleRow
+              label={t('upload.allowChallenges')}
+              hint={t('upload.allowChallengesHint')}
+              value={challengesOpen}
+              onChange={setChallengesOpen}
+            />
+
+            <ToggleRow
+              label={t('upload.explicit')}
+              hint={t('upload.explicitHint')}
+              value={isExplicit}
+              onChange={setIsExplicit}
+            />
 
             <CoverPicker coverImage={coverImage} onPick={pickCoverImage} onClear={() => setCoverImage(null)} />
 
-            {isUploading && <ProgressBar progress={uploadProgress} label="Uploading..." />}
-
-            <CopyrightCheckbox
-              value={copyrightAcknowledged}
-              onChange={setCopyrightAcknowledged}
-            />
-
-            <TouchableOpacity
-              onPress={submitSingle}
-              disabled={isUploading || !copyrightAcknowledged}
-              className={`flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-violet-600 ${isUploading || !copyrightAcknowledged ? 'opacity-40' : ''}`}
-            >
-              {isUploading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Save size={18} color="#fff" />
-              )}
-              <Text className="text-white font-medium">
-                {isUploading ? 'Uploading...' : 'Upload Track'}
-              </Text>
-            </TouchableOpacity>
+            {continueButton}
           </View>
         )}
 
         {/* ── Album form ── */}
         {isAlbum && (
-          <View className="rounded-2xl bg-dark-800 border border-dark-700 p-5 gap-4">
-            <Text className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Album
-            </Text>
+          <View
+            className="rounded-2xl border p-5 gap-4"
+            style={{ backgroundColor: colors.surface, borderColor: colors.border }}
+          >
+            <AppText
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{ color: colors.textMuted }}
+            >
+              {t('upload.albumHeading')}
+            </AppText>
 
             <View className="gap-1">
-              <Text className="text-sm font-medium text-gray-300">Album title *</Text>
+              <AppText className="text-sm font-medium" style={{ color: colors.text }}>{t('upload.albumTitleReq')}</AppText>
               <TextInput
                 value={albumTitle}
                 onChangeText={setAlbumTitle}
-                placeholder="Album title"
-                placeholderTextColor="#6b7280"
-                className="px-4 py-3 rounded-xl bg-dark-700 border border-dark-600 text-white"
+                placeholder={t('upload.albumTitle')}
+                placeholderTextColor={colors.textMuted}
+                className="px-4 py-3 rounded-xl border"
+                style={{ backgroundColor: colors.surfaceElevated, borderColor: colors.border, color: colors.text }}
               />
             </View>
 
             <View className="gap-1">
-              <Text className="text-sm font-medium text-gray-300">Artist *</Text>
+              <AppText className="text-sm font-medium" style={{ color: colors.text }}>{t('upload.artistReq')}</AppText>
               <TextInput
                 value={artist}
                 onChangeText={setArtist}
-                placeholder="Artist name"
-                placeholderTextColor="#6b7280"
-                className="px-4 py-3 rounded-xl bg-dark-700 border border-dark-600 text-white"
+                placeholder={t('upload.artistName')}
+                placeholderTextColor={colors.textMuted}
+                className="px-4 py-3 rounded-xl border"
+                style={{ backgroundColor: colors.surfaceElevated, borderColor: colors.border, color: colors.text }}
               />
             </View>
 
             <GenreSelector value={genre} onChange={setGenre} />
 
-            <CoverPicker coverImage={coverImage} onPick={pickCoverImage} onClear={() => setCoverImage(null)} />
+            <ToggleRow
+              label={t('upload.explicit')}
+              hint={t('upload.explicitHint')}
+              value={isExplicit}
+              onChange={setIsExplicit}
+            />
+
+            <CoverPicker coverImage={coverImage} required onPick={pickCoverImage} onClear={() => setCoverImage(null)} />
 
             {/* Track list */}
             <View className="gap-1">
-              <Text className="text-sm font-medium text-gray-300 mb-1">
-                Tracks
-              </Text>
+              <AppText className="text-sm font-medium mb-1" style={{ color: colors.text }}>{t('upload.tracks')}</AppText>
               <View className="gap-2">
                 {tracks.map((track, idx) => (
                   <View
                     key={track.id}
-                    className="flex-row items-center gap-2 bg-dark-700 rounded-xl p-3 border border-dark-600"
+                    className="flex-row items-center gap-2 rounded-xl p-3 border"
+                    style={{ backgroundColor: colors.surfaceElevated, borderColor: colors.border }}
                   >
-                    <Text className="w-5 text-sm text-gray-500 text-right">{track.order}</Text>
+                    <AppText className="w-5 text-sm text-right" style={{ color: colors.textMuted }}>{track.order}</AppText>
                     <TextInput
                       value={track.title}
                       onChangeText={(v) => setTrackTitle(track.id, v)}
-                      placeholder="Track title"
-                      placeholderTextColor="#6b7280"
-                      className="flex-1 px-3 py-2 rounded-lg bg-dark-800 text-sm text-white"
+                      placeholder={t('upload.trackTitle')}
+                      placeholderTextColor={colors.textMuted}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm"
+                      style={{ backgroundColor: colors.surface, color: colors.text }}
                     />
-                    <Text className="text-xs text-gray-500 w-10 text-right">
+                    <AppText className="text-xs w-10 text-right" style={{ color: colors.textMuted }}>
                       {formatDuration(track.duration)}
-                    </Text>
+                    </AppText>
                     <View className="flex-row gap-1">
                       <TouchableOpacity
                         onPress={() => moveTrack(track.id, 'up')}
                         disabled={idx === 0}
                         className="p-1.5 rounded"
                       >
-                        <ChevronUp size={16} color={idx === 0 ? '#374151' : '#9ca3af'} />
+                        <ChevronUp size={16} color={idx === 0 ? colors.border : colors.textSecondary} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => moveTrack(track.id, 'down')}
@@ -763,13 +771,10 @@ const UnifiedUploadContent: React.FC = () => {
                       >
                         <ChevronDown
                           size={16}
-                          color={idx === tracks.length - 1 ? '#374151' : '#9ca3af'}
+                          color={idx === tracks.length - 1 ? colors.border : colors.textSecondary}
                         />
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => removeTrack(track.id)}
-                        className="p-1.5 rounded"
-                      >
+                      <TouchableOpacity onPress={() => removeTrack(track.id)} className="p-1.5 rounded">
                         <X size={16} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
@@ -778,87 +783,39 @@ const UnifiedUploadContent: React.FC = () => {
               </View>
               <TouchableOpacity
                 onPress={pickAudioFiles}
-                className="mt-2 py-2.5 rounded-xl bg-dark-700 border border-dashed border-dark-500 items-center"
+                className="mt-2 py-2.5 rounded-xl border border-dashed items-center"
+                style={{ borderColor: colors.border }}
               >
-                <Text className="text-violet-400 text-sm">+ Add more tracks</Text>
+                <AppText className="text-sm" style={{ color: colors.textSecondary }}>{t('upload.addMore')}</AppText>
               </TouchableOpacity>
             </View>
 
             {atAlbumLimit && (
               <View className="rounded-xl border border-amber-600/40 bg-amber-950/30 p-4 items-center">
-                <Text className="text-white text-sm font-medium mb-1">Album limit reached</Text>
-                <Text className="text-gray-400 text-xs mb-2">
-                  Free plan is capped at {FREE_ALBUM_LIMIT} albums.
-                </Text>
+                <AppText className="text-black text-sm font-medium mb-1">{t('upload.albumLimitTitle')}</AppText>
+                <AppText className="text-amber-200 text-xs mb-2">
+                  {t('upload.albumLimitBody', { limit: FREE_ALBUM_LIMIT })}
+                </AppText>
                 <TouchableOpacity onPress={() => (navigation.getParent() as any)?.navigate('ProfileTab')}>
-                  <Text className="text-violet-400 text-sm font-medium">Upgrade to Pro →</Text>
+                  <AppText className="text-amber-400 text-sm font-medium">{t('upload.upgradeArrow')}</AppText>
                 </TouchableOpacity>
               </View>
             )}
 
-            {isUploading && <ProgressBar progress={uploadProgress} label="Uploading album..." />}
-
-            <CopyrightCheckbox
-              value={copyrightAcknowledged}
-              onChange={setCopyrightAcknowledged}
-            />
-
-            <TouchableOpacity
-              onPress={submitAlbum}
-              disabled={isUploading || atAlbumLimit || !copyrightAcknowledged}
-              className={`flex-row items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-violet-600 ${isUploading || atAlbumLimit || !copyrightAcknowledged ? 'opacity-40' : ''}`}
-            >
-              {isUploading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Save size={18} color="#fff" />
-              )}
-              <Text className="text-white font-medium">
-                {isUploading ? 'Uploading...' : 'Upload Album'}
-              </Text>
-            </TouchableOpacity>
+            {continueButton}
           </View>
         )}
 
         {/* Empty state */}
         {tracks.length === 0 && (
           <View className="items-center py-12 px-6">
-            <Music size={48} color="#374151" />
-            <Text className="text-gray-500 font-medium mt-4 mb-2">No files yet</Text>
-            <Text className="text-gray-600 text-sm text-center">
-              Tap the area above to select MP3, WAV, AIFF, or M4A files.{'\n'}
-              1 file uploads as a single · 2+ files upload as an album.
-            </Text>
+            <Music size={48} color={colors.textBlack} />
+            <AppText className="font-medium mt-4 mb-2" style={{ color: colors.textBlack }}>{t('upload.noFiles')}</AppText>
+            <AppText className="text-sm text-center" style={{ color: colors.textBlack }}>
+              {t('upload.noFilesBody')}
+            </AppText>
           </View>
         )}
-
-        {/* Image lightbox */}
-        <Modal
-          transparent
-          visible={!!expandedImage}
-          animationType="fade"
-          onRequestClose={() => setExpandedImage(null)}
-        >
-          <Pressable
-            className="flex-1 bg-black items-center justify-center p-4"
-            onPress={() => setExpandedImage(null)}
-          >
-            {expandedImage && (
-              <Image
-                source={{ uri: expandedImage }}
-                className="w-full rounded-xl"
-                style={{ height: 320 }}
-                resizeMode="contain"
-              />
-            )}
-            <TouchableOpacity
-              onPress={() => setExpandedImage(null)}
-              className="absolute top-10 right-4 p-2 rounded-full bg-white/20"
-            >
-              <X size={24} color="#fff" />
-            </TouchableOpacity>
-          </Pressable>
-        </Modal>
       </View>
     </ScrollView>
   );
@@ -866,97 +823,98 @@ const UnifiedUploadContent: React.FC = () => {
 
 // ─── Helper sub-components ───────────────────────────────────────────────────
 
+const ToggleRow: React.FC<{ label: string; hint: string; value: boolean; onChange: (v: boolean) => void }> = ({
+  label,
+  hint,
+  value,
+  onChange,
+}) => (
+  <View className="flex-row items-center justify-between py-1">
+    <View className="flex-1 mr-4">
+      <AppText className="text-sm font-medium" style={{ color: colors.text }}>{label}</AppText>
+      <AppText className="text-xs mt-0.5" style={{ color: colors.textMuted }}>{hint}</AppText>
+    </View>
+    <Switch
+      value={value}
+      onValueChange={onChange}
+      trackColor={{ false: colors.border, true: colors.primary }}
+      thumbColor="#fff"
+    />
+  </View>
+);
+
 const GenreSelector: React.FC<{ value: string; onChange: (g: string) => void }> = ({
   value,
   onChange,
 }) => (
   <View className="gap-2">
-    <Text className="text-sm font-medium text-gray-300">Genre *</Text>
+    <AppText className="text-sm font-medium" style={{ color: colors.text }}>{i18n.t('upload.genreReq')}</AppText>
     <View className="flex-row flex-wrap gap-2">
-      {GENRES.map((g) => (
-        <TouchableOpacity
-          key={g}
-          onPress={() => onChange(g === value ? '' : g)}
-          className={`px-3 py-1.5 rounded-full border ${
-            value === g
-              ? 'bg-violet-600/30 border-violet-500'
-              : 'bg-dark-700 border-dark-600'
-          }`}
-        >
-          <Text
-            className={`text-xs font-medium ${value === g ? 'text-violet-300' : 'text-gray-400'}`}
+      {GENRES.map((g) => {
+        const selected = value === g;
+        return (
+          <TouchableOpacity
+            key={g}
+            onPress={() => onChange(g === value ? '' : g)}
+            className="px-3 py-1.5 rounded-full border"
+            style={{
+              backgroundColor: selected ? colors.primary + '33' : colors.surfaceElevated,
+              borderColor: selected ? colors.primary : colors.border,
+            }}
           >
-            {g}
-          </Text>
-        </TouchableOpacity>
-      ))}
+            <AppText
+              className="text-xs font-medium"
+              style={{ color: selected ? colors.text : colors.textSecondary }}
+            >
+              {genreLabel(g)}
+            </AppText>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   </View>
 );
 
 const CoverPicker: React.FC<{
-  coverImage: RNFile | null;
+  coverImage: PickedFile | null;
+  required?: boolean;
   onPick: () => void;
   onClear: () => void;
-}> = ({ coverImage, onPick, onClear }) => (
+}> = ({ coverImage, required, onPick, onClear }) => (
   <View className="gap-1">
-    <Text className="text-sm font-medium text-gray-300">Cover</Text>
+    <AppText className="text-sm font-medium" style={{ color: colors.text }}>{i18n.t('upload.cover')}{required ? ' *' : ''}</AppText>
     {!coverImage ? (
       <TouchableOpacity
         onPress={onPick}
-        className="rounded-xl border-2 border-dashed border-dark-600 py-4 items-center"
+        className="rounded-xl border-2 border-dashed py-4 items-center"
+        style={{ borderColor: colors.border }}
       >
-        <Text className="text-gray-500 text-sm">Tap to add cover image</Text>
+        <AppText className="text-sm" style={{ color: colors.textMuted }}>{i18n.t('upload.tapCover')}</AppText>
       </TouchableOpacity>
     ) : (
       <View className="flex-row items-center gap-3">
         <Image source={{ uri: coverImage.uri }} className="w-14 h-14 rounded-lg" />
-        <Text className="flex-1 text-gray-400 text-sm" numberOfLines={1}>
+        <AppText className="flex-1 text-sm" numberOfLines={1} style={{ color: colors.textSecondary }}>
           {coverImage.name}
-        </Text>
+        </AppText>
         <TouchableOpacity onPress={onClear}>
-          <Text className="text-red-400 text-sm">Remove</Text>
+          <AppText className="text-red-500 text-sm">{i18n.t('upload.remove')}</AppText>
         </TouchableOpacity>
       </View>
     )}
   </View>
 );
 
-const CopyrightCheckbox: React.FC<{ value: boolean; onChange: (v: boolean) => void }> = ({
-  value,
-  onChange,
-}) => (
-  <TouchableOpacity
-    onPress={() => onChange(!value)}
-    activeOpacity={0.7}
-    className="flex-row items-start gap-3 py-1"
-  >
-    <View
-      className={`w-5 h-5 mt-0.5 rounded border-2 flex-shrink-0 items-center justify-center ${
-        value ? 'bg-violet-600 border-violet-500' : 'bg-dark-700 border-dark-500'
-      }`}
-    >
-      {value && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700', lineHeight: 14 }}>✓</Text>}
-    </View>
-    <Text className="flex-1 text-xs text-gray-400 leading-5">
-      I own the rights to this content or have permission to distribute it.{' '}
-      <Text className="text-gray-500">
-        Uploading copyrighted material without authorisation will result in automatic removal.
-      </Text>
-    </Text>
-  </TouchableOpacity>
-);
-
 const ProgressBar: React.FC<{ progress: number; label: string }> = ({ progress, label }) => (
   <View className="gap-1.5">
     <View className="flex-row justify-between">
-      <Text className="text-sm text-gray-400">{label}</Text>
-      <Text className="text-sm text-gray-400">{Math.round(progress)}%</Text>
+      <AppText className="text-sm" style={{ color: colors.textSecondary }}>{label}</AppText>
+      <AppText className="text-sm" style={{ color: colors.textSecondary }}>{Math.round(progress)}%</AppText>
     </View>
-    <View className="h-2 bg-dark-700 rounded-full overflow-hidden">
+    <View className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: colors.border }}>
       <View
-        className="h-full bg-violet-500 rounded-full"
-        style={{ width: `${progress}%` }}
+        className="h-full rounded-full"
+        style={{ width: `${progress}%`, backgroundColor: colors.primary }}
       />
     </View>
   </View>
@@ -965,79 +923,36 @@ const ProgressBar: React.FC<{ progress: number; label: string }> = ({ progress, 
 // ─── Root component ───────────────────────────────────────────────────────────
 
 const Upload: React.FC = () => {
-  const { isAuthenticated, user } = useStore();
-  const [resendStatus, setResendStatus] = React.useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  // Signed-in users can upload straight away; there's no email-confirmation gate.
+  const { isAuthenticated } = useStore();
 
   if (!isAuthenticated) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
-      <View className="flex-1 items-center justify-center px-6 gap-6">
-        <View className="bg-dark-700 rounded-2xl p-6">
-          <Lock size={48} color="#a855f7" />
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+        <View className="flex-1 items-center justify-center px-6 gap-6">
+          <View className="rounded-2xl p-6" style={{ backgroundColor: colors.surfaceElevated }}>
+            <Lock size={48} color={colors.primary} />
+          </View>
+          <AppText className="text-xl font-semibold" style={{ color: colors.text }}>{i18n.t('upload.authTitle')}</AppText>
+          <AppText className="text-center max-w-xs" style={{ color: colors.textSecondary }}>
+            {i18n.t('upload.authBody')}
+          </AppText>
         </View>
-        <Text className="text-xl font-semibold text-white">Authentication Required</Text>
-        <Text className="text-gray-400 text-center max-w-xs">
-          Sign in to upload music or albums and manage your releases.
-        </Text>
-      </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (user && !user.emailConfirmed) {
-    const handleResend = async () => {
-      if (!user.email) return;
-      setResendStatus('sending');
-      try {
-        const { AuthService } = await import('../../services/authService');
-        await AuthService.resendEmailConfirmation(user.email);
-        setResendStatus('sent');
-      } catch {
-        setResendStatus('error');
-      }
-    };
-
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
-      <View className="flex-1 items-center justify-center px-6 gap-6">
-        <View className="bg-dark-700 rounded-2xl p-6">
-          <Lock size={48} color="#a855f7" />
-        </View>
-        <Text className="text-xl font-semibold text-white">Confirm your email to upload</Text>
-        <Text className="text-gray-400 text-center max-w-xs">
-          We sent a confirmation link to{' '}
-          <Text className="text-white font-medium">{user.email}</Text>.
-          {'\n'}Click the link in that email to unlock uploads.
-        </Text>
-        <Text className="text-gray-600 text-xs">Check your spam folder if you don't see it.</Text>
-        <TouchableOpacity
-          onPress={handleResend}
-          disabled={resendStatus === 'sending' || resendStatus === 'sent'}
-          className={`px-6 py-3 rounded-xl bg-violet-600 ${resendStatus === 'sending' || resendStatus === 'sent' ? 'opacity-50' : ''}`}
-        >
-          <Text className="text-white font-medium">
-            {resendStatus === 'sending'
-              ? 'Sending…'
-              : resendStatus === 'sent'
-              ? 'Email sent!'
-              : resendStatus === 'error'
-              ? 'Failed — try again'
-              : 'Resend confirmation email'}
-          </Text>
-        </TouchableOpacity>
-      </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
-    <View className="flex-1 bg-dark-900">
-      <View className="px-4 pt-4 pb-2 border-b border-dark-700/50">
-        <Text className="text-2xl font-bold text-white">Upload</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+      <View className="flex-1" style={{ backgroundColor: colors.background }}>
+        <View
+          className="px-4 pt-4 pb-2 border-b"
+          style={{ borderColor: colors.border }}
+        >
+          <AppText className="text-2xl font-bold" style={{ color: colors.text }}>{i18n.t('upload.title')}</AppText>
+        </View>
+        <UnifiedUploadContent />
       </View>
-      <UnifiedUploadContent />
-    </View>
     </SafeAreaView>
   );
 };

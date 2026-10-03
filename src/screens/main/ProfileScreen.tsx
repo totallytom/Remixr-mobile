@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
+  Text as RNText,
   ScrollView,
   TouchableOpacity,
   Image,
@@ -12,7 +12,14 @@ import {
   TextInput,
   Share,
   Linking,
+  type TextProps,
 } from 'react-native';
+import { FONTS } from '../../utils/fonts';
+import { colors } from '../../theme'
+
+const Text = ({ style, ...props }: TextProps) => (
+  <RNText style={[{ fontFamily: FONTS.body }, style]} {...props} />
+);
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -39,6 +46,10 @@ import {
   AtSign,
   MessageCircle,
   Search,
+  Shield,
+  Ticket as TicketIcon,
+  QrCode,
+  BarChart3,
 } from 'lucide-react-native';
 import { useStore } from '../../store/useStore';
 import { ChatService } from '../../services/chatService';
@@ -57,18 +68,26 @@ import AlbumCard from '../../components/music/AlbumCard';
 import FollowRequestCard from '../../components/social/FollowRequestCard';
 import VerifiedBadge from '../../components/VerifiedBadge';
 import { getAvatarUrl } from '../../utils/avatar';
+import { IN_APP_TICKETS_ENABLED } from '../../config/features';
 import { supabase } from '../../services/supabase';
+import * as ImagePicker from 'expo-image-picker';
 import type { ProfileStackParamList } from '../../navigation/stacks/ProfileStack';
 import SettingsModal from '../../components/layout/SettingsModal';
+import { formatTicketPrice, normalizeTicketUrl, openTicketUrl, parseConcertDateInput, todayKey } from '../../utils/concerts';
+import { formatConcertDate } from '../../utils/dateLocale';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
+import { genreLabel } from '../../utils/genres';
+import EarlyEarCard from '../../components/earlyEar/EarlyEarCard';
 
 type ProfileNavProp = NativeStackNavigationProp<ProfileStackParamList, 'Profile'>;
 
-const API_BASE = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 
 const GENRES = ['Electronic', 'Pop', 'Rock', 'Hip Hop', 'R&B', 'Jazz', 'Classical', 'Country', 'Folk', 'Reggae', 'Blues', 'Funk', 'House', 'Techno', 'Ambient'];
 const FREE_CONCERT_LIMIT = 1;
 
 const Profile: React.FC = () => {
+  const { t } = useTranslation();
   const navigation = useNavigation<ProfileNavProp>();
   const {
     user: currentUser,
@@ -79,6 +98,7 @@ const Profile: React.FC = () => {
     playQueue,
     playPlaylist,
     setSettingsOpen,
+    setSettingsInitialTab,
     isSettingsOpen,
   } = useStore();
 
@@ -92,8 +112,9 @@ const Profile: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     username: '', email: '', bio: '', artistName: '',
-    genres: [] as string[], isPrivate: false, vanityUrl: '',
+    genres: [] as string[], isPrivate: false, vanityUrl: '', bannerUrl: '',
   });
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [vanityError, setVanityError] = useState<string | null>(null);
 
@@ -115,7 +136,7 @@ const Profile: React.FC = () => {
   const [isAddingConcert, setIsAddingConcert] = useState(false);
   const [concertForm, setConcertForm] = useState({
     title: '', date: '', location: '', venue: '',
-    description: '', ticketPrice: '', ticketUrl: '',
+    description: '', ticketPrice: '', ticketUrl: '', capacity: '',
   });
 
   const [isEditingAbout, setIsEditingAbout] = useState(false);
@@ -148,7 +169,7 @@ const Profile: React.FC = () => {
   const [userTracks, setUserTracks] = useState<Track[]>([]);
   const [isLoadingTracks, setIsLoadingTracks] = useState(false);
 
-  const isCurrentUserPro = currentUser?.subscriptionTier === 'pro';
+  const isCurrentUserPro = currentUser?.subscriptionTier === 'artist';
   const atConcertLimit = !isCurrentUserPro && concerts.length >= FREE_CONCERT_LIMIT;
 
   useEffect(() => {
@@ -294,8 +315,8 @@ const Profile: React.FC = () => {
     if (!currentUser) return;
     const vanity = (currentUser as any).vanityUrl;
     const url = vanity
-      ? `https://remixr.app/@${vanity}`
-      : `https://remixr.app/profile/${encodeURIComponent(currentUser.username?.trim() || currentUser.id)}`;
+      ? `https://www.re-mixed.net/@${vanity}`
+      : `https://www.re-mixed.net/profile/${encodeURIComponent(currentUser.username?.trim() || currentUser.id)}`;
     try {
       await Share.share({ message: url, url });
       setProfileLinkCopied(true);
@@ -366,9 +387,44 @@ const Profile: React.FC = () => {
       genres: currentUser.genres || [],
       isPrivate: currentUser.isPrivate || false,
       vanityUrl: (currentUser as any).vanityUrl || '',
+      bannerUrl: (currentUser as any).bannerUrl || '',
     });
     setVanityError(null);
     setIsEditing(true);
+  };
+
+  const handlePickBanner = async () => {
+    if (!currentUser) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(t('profile.errors.photoPermissionTitle'), t('profile.errors.photoPermission'));
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [3, 1],
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setIsUploadingBanner(true);
+    try {
+      const response = await fetch(asset.uri);
+      const blob = await response.blob();
+      const sanitized = (asset.fileName ?? `banner-${Date.now()}.jpg`).replace(/[^a-zA-Z0-9.-]/g, '_');
+      const path = `profile-banners/${currentUser.id}/${Date.now()}-${sanitized}`;
+      const { data, error } = await supabase.storage
+        .from('music-files')
+        .upload(path, blob, { contentType: asset.mimeType ?? 'image/jpeg', upsert: false });
+      if (error || !data?.path) throw new Error(error?.message ?? t('profile.errors.bannerFailed'));
+      const bannerUrl = supabase.storage.from('music-files').getPublicUrl(data.path).data.publicUrl;
+      setEditForm(prev => ({ ...prev, bannerUrl }));
+    } catch (error) {
+      Alert.alert(t('profile.errors.bannerFailedTitle'), error instanceof Error ? error.message : t('common.tryAgain'));
+    } finally {
+      setIsUploadingBanner(false);
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -376,9 +432,9 @@ const Profile: React.FC = () => {
     setVanityError(null);
     const newVanity = (editForm.vanityUrl || '').trim().toLowerCase() || undefined;
     if (newVanity && newVanity !== (currentUser as any)?.vanityUrl) {
-      if (newVanity.length < 3) { setVanityError('Handle must be at least 3 characters'); return; }
+      if (newVanity.length < 3) { setVanityError(t('profile.errors.vanityShort')); return; }
       const available = await ChatService.isVanityUrlAvailable(newVanity, currentUser.id);
-      if (!available) { setVanityError('This handle is already taken'); return; }
+      if (!available) { setVanityError(t('profile.errors.vanityTaken')); return; }
     }
     setIsSaving(true);
     try {
@@ -390,28 +446,13 @@ const Profile: React.FC = () => {
         genres: editForm.genres,
         isPrivate: editForm.isPrivate,
         vanityUrl: newVanity,
+        bannerUrl: editForm.bannerUrl || undefined,
       } as any);
       setIsEditing(false);
     } catch (error) {
       console.error('Failed to save profile:', error);
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleStripeOnboard = async () => {
-    if (!currentUser) return;
-    try {
-      const response = await fetch(`${API_BASE}/api/create-stripe-account`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUser.id }),
-      });
-      const data = await response.json();
-      if (data.url) { await Linking.openURL(data.url); }
-      else { console.error('Failed to create Stripe account:', data.error); }
-    } catch (error) {
-      console.error('Failed to onboard with Stripe:', error);
     }
   };
 
@@ -500,7 +541,7 @@ const Profile: React.FC = () => {
   // Concert handlers
   const handleAddConcert = () => {
     if (atConcertLimit) return;
-    setConcertForm({ title: '', date: '', location: '', venue: '', description: '', ticketPrice: '', ticketUrl: '' });
+    setConcertForm({ title: '', date: '', location: '', venue: '', description: '', ticketPrice: '', ticketUrl: '', capacity: '' });
     setIsAddingConcert(true);
   };
 
@@ -509,23 +550,42 @@ const Profile: React.FC = () => {
       title: concert.title, date: concert.date.split('T')[0], location: concert.location,
       venue: concert.venue, description: concert.description || '',
       ticketPrice: concert.ticketPrice?.toString() || '', ticketUrl: concert.ticketUrl || '',
+      capacity: concert.capacity?.toString() || '',
     });
     setEditingConcert(concert);
   };
 
   const handleSaveConcert = async () => {
     if (!currentUser) return;
-    if (!concertForm.title.trim()) { Alert.alert('Error', 'Please enter a concert title'); return; }
-    if (!concertForm.date) { Alert.alert('Error', 'Please select a date'); return; }
-    if (!concertForm.venue.trim()) { Alert.alert('Error', 'Please enter a venue'); return; }
-    if (!concertForm.location.trim()) { Alert.alert('Error', 'Please enter a location'); return; }
+    if (!concertForm.title.trim()) { Alert.alert(t('common.error'), t('concertForm.needTitle')); return; }
+    const dateKey = parseConcertDateInput(concertForm.date);
+    if (!dateKey) {
+      Alert.alert(t('concertForm.checkDate'), t('concertForm.dateFormat', { example: `${new Date().getFullYear()}-12-31` }));
+      return;
+    }
+    // Past shows never appear anywhere, so don't let a new one be created
+    // (editing an old one is still allowed).
+    if (!editingConcert && dateKey < todayKey()) {
+      Alert.alert(t('concertForm.checkDate'), t('concertForm.datePassed'));
+      return;
+    }
+    if (!concertForm.venue.trim()) { Alert.alert(t('common.error'), t('concertForm.needVenue')); return; }
+    if (!concertForm.location.trim()) { Alert.alert(t('common.error'), t('concertForm.needLocation')); return; }
+    const ticketUrl = normalizeTicketUrl(concertForm.ticketUrl);
+    if (concertForm.ticketUrl.trim() && !ticketUrl) {
+      Alert.alert(t('concertForm.checkLink'), t('concertForm.linkFormat'));
+      return;
+    }
     try {
-      const dateValue = concertForm.date.includes('T') ? concertForm.date : `${concertForm.date}T00:00:00.000Z`;
+      const dateValue = `${dateKey}T00:00:00.000Z`;
       const concertData: CreateConcertData = {
         title: concertForm.title.trim(), date: dateValue, location: concertForm.location.trim(),
         venue: concertForm.venue.trim(), description: concertForm.description.trim() || undefined,
         ticketPrice: concertForm.ticketPrice ? parseFloat(concertForm.ticketPrice) : undefined,
-        ticketUrl: concertForm.ticketUrl.trim() || undefined, userId: currentUser.id,
+        // '' (not undefined) on edit so clearing the field removes the saved link.
+        ticketUrl: ticketUrl ?? (editingConcert ? '' : undefined),
+        capacity: concertForm.capacity ? parseInt(concertForm.capacity, 10) : undefined,
+        userId: currentUser.id,
       };
       if (editingConcert) {
         const updated = await ConcertService.updateConcert(editingConcert.id, currentUser.id, concertData);
@@ -536,10 +596,10 @@ const Profile: React.FC = () => {
         setConcerts(prev => [...prev, newConcert].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
         setIsAddingConcert(false);
       }
-      setConcertForm({ title: '', date: '', location: '', venue: '', description: '', ticketPrice: '', ticketUrl: '' });
+      setConcertForm({ title: '', date: '', location: '', venue: '', description: '', ticketPrice: '', ticketUrl: '', capacity: '' });
     } catch (error) {
       console.error('Failed to save concert:', error);
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to save concert. Please try again.');
+      Alert.alert(t('common.error'), error instanceof Error ? error.message : t('concertForm.saveFailed'));
     }
   };
 
@@ -553,7 +613,7 @@ const Profile: React.FC = () => {
 
   const handleCancelConcertEdit = () => {
     setEditingConcert(null); setIsAddingConcert(false);
-    setConcertForm({ title: '', date: '', location: '', venue: '', description: '', ticketPrice: '', ticketUrl: '' });
+    setConcertForm({ title: '', date: '', location: '', venue: '', description: '', ticketPrice: '', ticketUrl: '', capacity: '' });
   };
 
   // About handlers
@@ -584,11 +644,11 @@ const Profile: React.FC = () => {
 
   if (!isAuthenticated) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <View className="flex-1 items-center justify-center p-6 gap-4">
         <Lock size={64} color="#6b7280" />
-        <Text className="text-2xl font-bold text-white">Authentication Required</Text>
-        <Text className="text-gray-400 text-center">You need to sign in to view profiles.</Text>
+        <Text className="text-2xl font-bold text-white">{t('profile.authTitle')}</Text>
+        <Text className="text-gray-400 text-center">{t('profile.authBody')}</Text>
       </View>
       </SafeAreaView>
     );
@@ -596,10 +656,10 @@ const Profile: React.FC = () => {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <View className="flex-1 items-center justify-center gap-3">
-        <ActivityIndicator size="large" color="#7c3aed" />
-        <Text className="text-gray-400">Loading profile...</Text>
+        <ActivityIndicator size="large" color="#000000" />
+        <Text className="text-black">{t('profile.loading')}</Text>
       </View>
       </SafeAreaView>
     );
@@ -607,9 +667,9 @@ const Profile: React.FC = () => {
 
   if (!currentUser) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
       <View className="flex-1 items-center justify-center">
-        <Text className="text-gray-400">User not found</Text>
+        <Text className="text-gray-400">{t('profile.notFound')}</Text>
       </View>
       </SafeAreaView>
     );
@@ -618,8 +678,9 @@ const Profile: React.FC = () => {
   const externalLinks = ((currentUser as any).externalLinks ?? []).filter(Boolean).slice(0, 3) as string[];
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
-    <ScrollView className="flex-1 bg-dark-900" contentContainerStyle={{ paddingBottom: 32 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+    <View style={{ height: 2, backgroundColor: colors.dark900 }} />
+    <ScrollView className="flex-1 bg-white" contentContainerStyle={{ paddingBottom: 32 }}>
 
       {/* Profile Header */}
       <View className="px-4 pt-6 pb-4">
@@ -630,7 +691,7 @@ const Profile: React.FC = () => {
             <Image
               source={{ uri: (currentUser as any).bannerUrl }}
               className="w-full h-full"
-              accessibilityLabel="Profile banner"
+              accessibilityLabel={t('profile.banner')}
             />
           </View>
         )}
@@ -638,12 +699,13 @@ const Profile: React.FC = () => {
         {/* Avatar + actions row */}
         <View className="flex-row items-end justify-between mb-4">
           <TouchableOpacity
-            onPress={() => Alert.alert('Coming soon', 'Avatar upload requires expo-image-picker.')}
+            onPress={() => { setSettingsInitialTab('account'); setSettingsOpen(true); }}
+            accessibilityHint={t('profile.avatarHint')}
             className="relative"
           >
             <Image
               source={{ uri: getAvatarUrl(currentUser.avatar) }}
-              className="w-24 h-24 rounded-full border-4 border-white"
+              className="w-24 h-24 rounded-full border-2 border-dark"
               accessibilityLabel={currentUser.username}
             />
             <View className="absolute bottom-0 right-0 w-7 h-7 bg-dark-700 rounded-full items-center justify-center border-2 border-dark-900">
@@ -659,18 +721,18 @@ const Profile: React.FC = () => {
             className="flex-row items-center gap-2 px-4 py-2 bg-primary-600 rounded-full"
           >
             <Edit size={16} color="white" />
-            <Text className="text-white font-medium text-sm">Edit Profile</Text>
+            <Text className="text-black font-medium text-sm">{t('profile.editProfile')}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Name + handle + bio */}
         <View className="mb-3">
           <View className="flex-row items-center gap-2 flex-wrap mb-1">
-            <Text className="text-2xl font-bold text-white">{currentUser.username}</Text>
+            <Text className="text-2xl font-bold text-black">{currentUser.username}</Text>
             <VerifiedBadge verified={currentUser.isVerified || (currentUser as any).isVerifiedArtist} size={20} />
-            {(currentUser as any).subscriptionTier === 'pro' && (
+            {(currentUser as any).subscriptionTier === 'artist' && (
               <View className="px-2 py-0.5 rounded-full bg-yellow-500/20 border border-yellow-500/30">
-                <Text className="text-yellow-400 text-xs font-bold">PRO</Text>
+                <Text className="text-black text-xs font-bold">{t('profile.artistBadge')}</Text>
               </View>
             )}
             {currentUser.isPrivate && <Lock size={16} color="#9ca3af" />}
@@ -681,8 +743,8 @@ const Profile: React.FC = () => {
               <Text className="text-violet-400 text-xs">{(currentUser as any).vanityUrl}</Text>
             </View>
           )}
-          <Text className="text-gray-300 text-sm">
-            {currentUser.bio || (currentUser.role === 'musician' ? 'Musician' : 'Listener')}
+          <Text className="text-black text-sm">
+            {currentUser.bio || (currentUser.role === 'musician' ? t('profile.musician') : t('profile.listener'))}
           </Text>
         </View>
 
@@ -713,6 +775,33 @@ const Profile: React.FC = () => {
           >
             <ListMusic size={20} color="white" />
           </TouchableOpacity>
+
+          {IN_APP_TICKETS_ENABLED && (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('MyTickets')}
+              className="p-2.5 rounded-full bg-dark-700"
+            >
+              <TicketIcon size={20} color="white" />
+            </TouchableOpacity>
+          )}
+
+          {isCurrentUserPro && (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Analytics')}
+              className="p-2.5 rounded-full bg-dark-700"
+            >
+              <BarChart3 size={20} color="white" />
+            </TouchableOpacity>
+          )}
+
+          {currentUser?.isAdmin && (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Admin')}
+              className="p-2.5 rounded-full bg-dark-700"
+            >
+              <Shield size={20} color="#ef4444" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* External links */}
@@ -742,12 +831,12 @@ const Profile: React.FC = () => {
               <Users size={18} color="#7c3aed" />
             </View>
             <View>
-              <Text className="text-xl font-bold text-white">
+              <Text className="text-xl font-bold text-black">
                 {followStats.followers >= 1000
                   ? `${(followStats.followers / 1000).toFixed(1)}K`
                   : followStats.followers}
               </Text>
-              <Text className="text-xs text-gray-400">Followers</Text>
+              <Text className="text-xs text-black">{t('profile.followers')}</Text>
             </View>
           </TouchableOpacity>
 
@@ -756,8 +845,8 @@ const Profile: React.FC = () => {
               <UserIcon size={18} color="#6b7280" />
             </View>
             <View>
-              <Text className="text-xl font-bold text-white">{followStats.following}</Text>
-              <Text className="text-xs text-gray-400">Following</Text>
+              <Text className="text-xl font-bold text-black">{followStats.following}</Text>
+              <Text className="text-xs text-black">{t('profile.following')}</Text>
             </View>
           </TouchableOpacity>
 
@@ -767,36 +856,50 @@ const Profile: React.FC = () => {
                 <UserPlus size={18} color="#f59e0b" />
               </View>
               <View>
-                <Text className="text-xl font-bold text-white">{pendingRequests.length}</Text>
-                <Text className="text-xs text-gray-400">Requests</Text>
+                <Text className="text-xl font-bold text-black">{pendingRequests.length}</Text>
+                <Text className="text-xs text-gray-400">{t('profile.requests')}</Text>
               </View>
             </TouchableOpacity>
           )}
         </View>
       </View>
 
+      {/* Early Ear */}
+      <View className="px-4 mb-4">
+        <EarlyEarCard userId={currentUser.id} isOwn />
+      </View>
+
       {/* Tab Navigation */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-4 mb-4">
-        <View className="flex-row gap-1 bg-dark-800 rounded-lg p-1">
-          {[
-            { key: 'music', label: 'Music' },
-            { key: 'albums', label: currentUser.role === 'musician' ? 'Albums' : 'Preferences' },
-            ...(currentUser.role === 'musician' ? [{ key: 'concerts', label: 'Concerts' }] : []),
-            { key: 'bookmark', label: 'Bookmarks' },
-            { key: 'liked', label: 'Liked' },
-          ].map(tab => (
-            <TouchableOpacity
-              key={tab.key}
-              onPress={() => setActiveTab(tab.key as any)}
-              className={`py-2 px-3 rounded-md ${activeTab === tab.key ? 'bg-primary-600' : ''}`}
-            >
-              <Text className={`text-sm font-medium ${activeTab === tab.key ? 'text-white' : 'text-gray-400'}`}>
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+      <View style={{ flexDirection: 'row', borderTopWidth: 1, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(1,1,1,0.50)', marginBottom: 16 }}>
+        {([
+          { key: 'music', label: t('profile.tabs.music') },
+          ...(currentUser.role === 'musician'
+            ? [{ key: 'albums', label: t('profile.tabs.albums') }, { key: 'concerts', label: t('profile.tabs.concerts') }]
+            : []),
+          { key: 'bookmark', label: t('profile.tabs.bookmarks') },
+          { key: 'liked', label: t('profile.tabs.liked') },
+        ] as { key: string; label: string }[]).map(tab => (
+          <TouchableOpacity
+            key={tab.key}
+            onPress={() => setActiveTab(tab.key as any)}
+            style={{
+              flex: 1,
+              paddingVertical: 12,
+              alignItems: 'center',
+              borderBottomWidth: 2,
+              borderBottomColor: activeTab === tab.key ? '#7c3aed' : 'transparent',
+            }}
+          >
+            <Text style={{
+              fontSize: 12,
+              fontWeight: activeTab === tab.key ? '700' : '400',
+              color: activeTab === tab.key ? '#fff' : 'black',
+            }}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
       {/* Tab Content */}
       <View className="px-4">
@@ -806,22 +909,22 @@ const Profile: React.FC = () => {
           <View>
             <View className="flex-row items-center gap-2 mb-4">
               <Music size={20} color="#a78bfa" />
-              <Text className="text-xl font-bold text-white">
-                {currentUser.role === 'musician' ? 'My Music' : 'My Music Collection'}
+              <Text className="text-xl font-bold text-black">
+                {currentUser.role === 'musician' ? t('profile.myMusic') : t('profile.myCollection')}
               </Text>
             </View>
             {isLoadingTracks ? (
               <View className="flex-row items-center justify-center py-8 gap-2">
-                <ActivityIndicator size="small" color="#a78bfa" />
-                <Text className="text-gray-400">Loading tracks...</Text>
+                <ActivityIndicator size="small" color="#000000" />
+                <Text className="text-black">{t('profile.loadingTracks')}</Text>
               </View>
             ) : userTracks.length === 0 ? (
               <View className="items-center py-12">
                 <Text className="text-gray-400 mb-2">
-                  {currentUser.role === 'musician' ? 'No tracks uploaded yet.' : 'No music in collection yet.'}
+                  {currentUser.role === 'musician' ? t('profile.noTracksMusician') : t('profile.noTracksListener')}
                 </Text>
                 <Text className="text-gray-500 text-sm">
-                  {currentUser.role === 'musician' ? 'Upload your first track to get started!' : 'Discover and add music to your collection!'}
+                  {currentUser.role === 'musician' ? t('profile.noTracksMusicianHint') : t('profile.noTracksListenerHint')}
                 </Text>
               </View>
             ) : (
@@ -843,38 +946,22 @@ const Profile: React.FC = () => {
           </View>
         )}
 
-        {/* ── Albums Tab (consumer) ── */}
-        {activeTab === 'albums' && currentUser.role === 'consumer' && (
-          <View>
-            <View className="flex-row items-center gap-2 mb-4">
-              <Music size={20} color="#a78bfa" />
-              <Text className="text-xl font-bold text-white">My Music Preferences</Text>
-            </View>
-            <View className="items-center py-12">
-              <Music size={48} color="#4b5563" />
-              <Text className="text-gray-400 mt-4 mb-2">Music preferences coming soon!</Text>
-              <Text className="text-gray-500 text-sm text-center">We'll help you discover music based on your listening habits.</Text>
-            </View>
-          </View>
-        )}
-
-        {/* ── Albums Tab (musician) ── */}
         {activeTab === 'albums' && currentUser.role === 'musician' && (
           <View>
             <View className="flex-row items-center gap-2 mb-4">
               <Music size={20} color="#a78bfa" />
-              <Text className="text-xl font-bold text-white">My Albums</Text>
+              <Text className="text-xl font-bold text-black">{t('profile.myAlbums')}</Text>
             </View>
             {isLoadingAlbums ? (
               <View className="flex-row items-center justify-center py-8 gap-2">
-                <ActivityIndicator size="small" color="#a78bfa" />
-                <Text className="text-gray-400">Loading albums...</Text>
+                <ActivityIndicator size="small" color="#000000" />
+                <Text className="text-black">{t('profile.loadingAlbums')}</Text>
               </View>
             ) : albums.length === 0 ? (
               <View className="items-center py-12">
                 <Music size={48} color="#4b5563" />
-                <Text className="text-gray-400 mt-4 mb-2">No albums uploaded yet.</Text>
-                <Text className="text-gray-500 text-sm">Upload albums on the Upload page!</Text>
+                <Text className="text-black">{t('profile.noAlbums')}</Text>
+                <Text className="text-black">{t('profile.noAlbumsHint')}</Text>
               </View>
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -885,17 +972,17 @@ const Profile: React.FC = () => {
                         <View className="bg-dark-800 rounded-lg p-4 border border-dark-700">
                           <View className="gap-3">
                             {[
-                              { label: 'Album Title', key: 'title', placeholder: 'Album title' },
-                              { label: 'Artist', key: 'artist', placeholder: 'Artist name' },
-                              { label: 'Genre', key: 'genre', placeholder: 'Genre' },
-                              { label: 'Price (optional)', key: 'price', placeholder: 'Price', numeric: true },
+                              { label: t('profile.albumFields.title'), key: 'title', placeholder: t('profile.albumFields.titlePh') },
+                              { label: t('profile.albumFields.artist'), key: 'artist', placeholder: t('profile.albumFields.artistPh') },
+                              { label: t('profile.albumFields.genre'), key: 'genre', placeholder: t('profile.albumFields.genrePh') },
+                              { label: t('profile.albumFields.price'), key: 'price', placeholder: t('profile.albumFields.pricePh'), numeric: true },
                             ].map(field => (
                               <View key={field.key}>
                                 <Text className="text-gray-300 text-xs font-medium mb-1">{field.label}</Text>
                                 <TextInput
                                   value={(albumForm as any)[field.key]}
                                   onChangeText={v => setAlbumForm(prev => ({ ...prev, [field.key]: v }))}
-                                  className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm"
+                                  className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-black text-sm"
                                   placeholder={field.placeholder}
                                   placeholderTextColor="#6b7280"
                                   keyboardType={field.numeric ? 'numeric' : 'default'}
@@ -903,12 +990,12 @@ const Profile: React.FC = () => {
                               </View>
                             ))}
                             <View>
-                              <Text className="text-gray-300 text-xs font-medium mb-1">Description</Text>
+                              <Text className="text-gray-300 text-xs font-medium mb-1">{t('profile.albumFields.description')}</Text>
                               <TextInput
                                 value={albumForm.description}
                                 onChangeText={v => setAlbumForm(prev => ({ ...prev, description: v }))}
-                                className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm"
-                                placeholder="Description"
+                                className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text- text-sm"
+                                placeholder={t('profile.albumFields.description')}
                                 placeholderTextColor="#6b7280"
                                 multiline
                                 numberOfLines={3}
@@ -916,10 +1003,10 @@ const Profile: React.FC = () => {
                             </View>
                             <View className="flex-row gap-2">
                               <TouchableOpacity onPress={handleSaveAlbum} className="flex-1 py-2 bg-primary-600 rounded-lg items-center">
-                                <Text className="text-white text-sm">Save</Text>
+                                <Text className="text-white text-sm">{t('common.save')}</Text>
                               </TouchableOpacity>
                               <TouchableOpacity onPress={() => { setEditingAlbum(null); }} className="flex-1 py-2 bg-dark-700 rounded-lg items-center">
-                                <Text className="text-white text-sm">Cancel</Text>
+                                <Text className="text-white text-sm">{i18n.t('common.cancel')}</Text>
                               </TouchableOpacity>
                             </View>
                           </View>
@@ -948,23 +1035,23 @@ const Profile: React.FC = () => {
             <View className="flex-row items-center justify-between mb-4">
               <View className="flex-row items-center gap-2">
                 <Calendar size={20} color="#a78bfa" />
-                <Text className="text-xl font-bold text-white">My Concerts</Text>
+                <Text className="text-xl font-bold text-black">{t('profile.myConcerts')}</Text>
               </View>
               <View className="flex-row items-center gap-3">
                 {!isCurrentUserPro && (
                   <Text className={`text-xs font-medium ${atConcertLimit ? 'text-amber-500' : 'text-gray-400'}`}>
-                    {concerts.length}/{FREE_CONCERT_LIMIT} used
+                    {t('profile.concertsUsed', { count: concerts.length, limit: FREE_CONCERT_LIMIT })}
                   </Text>
                 )}
                 {atConcertLimit ? (
                   <View className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
                     <Lock size={13} color="#f59e0b" />
-                    <Text className="text-yellow-400 text-sm font-medium">Go Pro</Text>
+                    <Text className="text-yellow-400 text-sm font-medium">{t('profile.goPro')}</Text>
                   </View>
                 ) : (
                   <TouchableOpacity onPress={handleAddConcert} className="flex-row items-center gap-2 px-3 py-2 bg-primary-600 rounded-lg">
                     <Calendar size={14} color="white" />
-                    <Text className="text-white text-sm">Add Concert</Text>
+                    <Text className="text-white text-sm">{t('profile.addConcert')}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -972,21 +1059,21 @@ const Profile: React.FC = () => {
 
             {isLoadingConcerts ? (
               <View className="flex-row items-center justify-center py-8 gap-2">
-                <ActivityIndicator size="small" color="#a78bfa" />
-                <Text className="text-gray-400">Loading concerts...</Text>
+                <ActivityIndicator size="small" color="#000000" />
+                <Text className="text-black">{t('profile.loadingConcerts')}</Text>
               </View>
             ) : concerts.length === 0 && !isAddingConcert ? (
               <View className="items-center py-12">
                 <Calendar size={48} color="#4b5563" />
-                <Text className="text-gray-400 mt-4 mb-2">No upcoming concerts scheduled.</Text>
-                <Text className="text-gray-500 text-sm">Add your concert dates to let fans know where to find you!</Text>
+                <Text className="text-gray-400 mt-4 mb-2">{t('profile.noConcerts')}</Text>
+                <Text className="text-gray-500 text-sm">{t('profile.noConcertsHint')}</Text>
               </View>
             ) : (
               <View className="gap-4">
                 {concerts.map(concert => (
                   <View key={concert.id} className="bg-dark-800 rounded-lg p-5 border border-dark-700">
                     {editingConcert?.id === concert.id ? (
-                      <ConcertForm form={concertForm} setForm={setConcertForm} onSave={handleSaveConcert} onCancel={handleCancelConcertEdit} label="Save Changes" />
+                      <ConcertForm form={concertForm} setForm={setConcertForm} onSave={handleSaveConcert} onCancel={handleCancelConcertEdit} label={t('profile.saveChanges')} />
                     ) : (
                       <View>
                         <View className="flex-row items-start justify-between">
@@ -996,30 +1083,38 @@ const Profile: React.FC = () => {
                               <View className="flex-row items-center gap-2">
                                 <Calendar size={14} color="#a78bfa" />
                                 <Text className="text-gray-300 text-sm">
-                                  {new Date(concert.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                  {formatConcertDate(concert.date, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                                 </Text>
                               </View>
                               <View className="flex-row items-center gap-2">
                                 <MapPin size={14} color="#a78bfa" />
                                 <Text className="text-gray-300 text-sm">{concert.venue}, {concert.location}</Text>
                               </View>
-                              {concert.ticketPrice && (
-                                <Text className="text-primary-400 font-medium text-sm">${concert.ticketPrice}</Text>
-                              )}
+                              {formatTicketPrice(concert.ticketPrice) ? (
+                                <Text className="text-primary-400 font-medium text-sm">{formatTicketPrice(concert.ticketPrice)}</Text>
+                              ) : null}
                               {concert.description && (
                                 <Text className="text-gray-400 text-sm mt-1">{concert.description}</Text>
                               )}
                             </View>
                             {concert.ticketUrl && (
                               <TouchableOpacity
-                                onPress={() => Linking.openURL(concert.ticketUrl!).catch(console.error)}
+                                onPress={() => openTicketUrl(concert.ticketUrl)}
                                 className="mt-3 px-4 py-2 bg-primary-600 rounded-lg self-start"
                               >
-                                <Text className="text-white text-sm">Get Tickets</Text>
+                                <Text className="text-white text-sm">{t('concerts.getTickets')}</Text>
                               </TouchableOpacity>
                             )}
                           </View>
                           <View className="flex-row items-center gap-1 ml-3">
+                            {IN_APP_TICKETS_ENABLED && !concert.ticketUrl && concert.ticketPrice ? (
+                              <TouchableOpacity
+                                onPress={() => navigation.navigate('TicketScanner', { concertId: concert.id, concertTitle: concert.title })}
+                                className="p-2"
+                              >
+                                <QrCode size={16} color="#a78bfa" />
+                              </TouchableOpacity>
+                            ) : null}
                             <TouchableOpacity onPress={() => handleEditConcert(concert)} className="p-2">
                               <Edit size={16} color="#9ca3af" />
                             </TouchableOpacity>
@@ -1035,8 +1130,8 @@ const Profile: React.FC = () => {
 
                 {isAddingConcert && (
                   <View className="bg-dark-800 rounded-lg p-5 border border-dark-700">
-                    <Text className="text-lg font-semibold text-white mb-4">Add New Concert</Text>
-                    <ConcertForm form={concertForm} setForm={setConcertForm} onSave={handleSaveConcert} onCancel={handleCancelConcertEdit} label="Add Concert" />
+                    <Text className="text-lg font-semibold text-white mb-4">{t('profile.addNewConcert')}</Text>
+                    <ConcertForm form={concertForm} setForm={setConcertForm} onSave={handleSaveConcert} onCancel={handleCancelConcertEdit} label={t('profile.addConcert')} />
                   </View>
                 )}
               </View>
@@ -1049,18 +1144,18 @@ const Profile: React.FC = () => {
           <View>
             <View className="flex-row items-center gap-2 mb-4">
               <Bookmark size={20} color="#a78bfa" />
-              <Text className="text-xl font-bold text-white">My Bookmarks</Text>
+              <Text className="text-xl font-bold text-black">{t('profile.myBookmarks')}</Text>
             </View>
             {isLoadingBookmarks ? (
               <View className="flex-row items-center justify-center py-8 gap-2">
-                <ActivityIndicator size="small" color="#a78bfa" />
-                <Text className="text-gray-400">Loading bookmarks...</Text>
+                <ActivityIndicator size="small" color="#000000" />
+                <Text className="text-black">{t('profile.loadingBookmarks')}</Text>
               </View>
             ) : bookmarks.length === 0 ? (
               <View className="items-center py-12">
                 <Bookmark size={48} color="#4b5563" />
-                <Text className="text-gray-400 mt-4 mb-2">No bookmarks yet.</Text>
-                <Text className="text-gray-500 text-sm">Bookmark tracks you love by tapping the bookmark icon!</Text>
+                <Text className="text-black mt-4 mb-2">{t('profile.noBookmarks')}</Text>
+                <Text className="text-black text-sm">{t('profile.noBookmarksHint')}</Text>
               </View>
             ) : (
               <View>
@@ -1069,8 +1164,8 @@ const Profile: React.FC = () => {
                     onPress={() => playQueue(bookmarks)}
                     className="mb-4 px-4 py-2 bg-primary-600 rounded-lg self-start"
                   >
-                    <Text className="text-white font-semibold text-sm">
-                      {bookmarks.length === 1 ? 'Play Bookmark' : 'Play All Bookmarks'}
+                    <Text className="text-black font-semibold text-sm">
+                      {bookmarks.length === 1 ? t('profile.playBookmark') : t('profile.playAllBookmarks')}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -1093,18 +1188,18 @@ const Profile: React.FC = () => {
           <View>
             <View className="flex-row items-center gap-2 mb-4">
               <ThumbsUp size={20} color="#a78bfa" />
-              <Text className="text-xl font-bold text-white">Liked Tracks</Text>
+              <Text className="text-xl font-bold text-black">{t('profile.likedTracks')}</Text>
             </View>
             {isLoadingLikedTracks ? (
               <View className="flex-row items-center justify-center py-8 gap-2">
-                <ActivityIndicator size="small" color="#a78bfa" />
-                <Text className="text-gray-400">Loading liked tracks...</Text>
+                <ActivityIndicator size="small" color="#000000" />
+                <Text className="text-black">{t('profile.loadingLiked')}</Text>
               </View>
             ) : likedTracks.length === 0 ? (
               <View className="items-center py-12">
                 <ThumbsUp size={48} color="#4b5563" />
-                <Text className="text-gray-400 mt-4 mb-2">No liked tracks yet.</Text>
-                <Text className="text-gray-500 text-sm">Like tracks from Discover or tap the thumbs up on any track!</Text>
+                <Text className="text-gray-400 mt-4 mb-2">{t('profile.noLiked')}</Text>
+                <Text className="text-gray-500 text-sm">{t('profile.noLikedHint')}</Text>
               </View>
             ) : (
               <View>
@@ -1113,7 +1208,7 @@ const Profile: React.FC = () => {
                     onPress={() => playQueue(likedTracks)}
                     className="mb-4 px-4 py-2 bg-primary-600 rounded-lg self-start"
                   >
-                    <Text className="text-white font-semibold text-sm">Play All Liked</Text>
+                    <Text className="text-white font-semibold text-sm">{t('profile.playAllLiked')}</Text>
                   </TouchableOpacity>
                 )}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -1135,8 +1230,8 @@ const Profile: React.FC = () => {
           <View className="flex-row items-center justify-between mb-4">
             <View className="flex-row items-center gap-2">
               <UserIcon size={20} color="#a78bfa" />
-              <Text className="text-xl font-bold text-white">
-                About {currentUser.artistName || currentUser.username}
+              <Text className="text-xl font-bold text-black">
+                {t('profile.about', { name: currentUser.artistName || currentUser.username })}
               </Text>
             </View>
             <TouchableOpacity
@@ -1144,26 +1239,26 @@ const Profile: React.FC = () => {
               className="flex-row items-center gap-2 px-3 py-2 bg-primary-600 rounded-lg"
             >
               <Edit size={14} color="white" />
-              <Text className="text-white text-sm">Edit</Text>
+              <Text className="text-white text-sm">{t('profile.edit')}</Text>
             </TouchableOpacity>
           </View>
 
           {isEditingAbout ? (
             <View className="gap-4">
               <View className="bg-dark-800 rounded-lg p-4">
-                <Text className="text-white font-semibold mb-3">Biography</Text>
+                <Text className="text-white font-semibold mb-3">{t('profile.biography')}</Text>
                 <TextInput
                   value={aboutForm.bio}
                   onChangeText={v => setAboutForm(prev => ({ ...prev, bio: v }))}
                   className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm"
-                  placeholder="Tell your fans about yourself..."
+                  placeholder={t('profile.bioPlaceholder')}
                   placeholderTextColor="#6b7280"
                   multiline
                   numberOfLines={4}
                 />
               </View>
               <View className="bg-dark-800 rounded-lg p-4">
-                <Text className="text-white font-semibold mb-3">Musical Genres</Text>
+                <Text className="text-white font-semibold mb-3">{t('profile.musicalGenres')}</Text>
                 <View className="flex-row flex-wrap gap-2 mb-3">
                   {aboutForm.genres.map((genre, i) => (
                     <TouchableOpacity
@@ -1171,12 +1266,12 @@ const Profile: React.FC = () => {
                       onPress={() => handleRemoveGenre(genre)}
                       className="flex-row items-center gap-1.5 px-3 py-1 bg-primary-600 rounded-full"
                     >
-                      <Text className="text-white text-sm">{genre}</Text>
+                      <Text className="text-white text-sm">{genreLabel(genre)}</Text>
                       <X size={12} color="white" />
                     </TouchableOpacity>
                   ))}
                 </View>
-                <Text className="text-gray-400 text-xs mb-2">Tap to add:</Text>
+                <Text className="text-gray-400 text-xs mb-2">{t('profile.tapToAdd')}</Text>
                 <View className="flex-row flex-wrap gap-2">
                   {GENRES.filter(g => !aboutForm.genres.includes(g)).map(genre => (
                     <TouchableOpacity
@@ -1184,26 +1279,26 @@ const Profile: React.FC = () => {
                       onPress={() => handleAddGenre(genre)}
                       className="px-3 py-1 bg-dark-600 rounded-full border border-dark-500"
                     >
-                      <Text className="text-gray-300 text-sm">{genre}</Text>
+                      <Text className="text-gray-300 text-sm">{genreLabel(genre)}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </View>
               <View className="flex-row gap-3">
                 <TouchableOpacity onPress={handleSaveAbout} className="flex-1 py-2.5 bg-primary-600 rounded-lg items-center">
-                  <Text className="text-white font-semibold">Save Changes</Text>
+                  <Text className="text-white font-semibold">{t('profile.saveChanges')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setIsEditingAbout(false)} className="flex-1 py-2.5 bg-dark-700 rounded-lg items-center">
-                  <Text className="text-white">Cancel</Text>
+                  <Text className="text-white">{t('common.cancel')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
           ) : (
             <View className="gap-4">
               <View className="bg-dark-800 rounded-lg p-4">
-                <Text className="text-white font-semibold mb-2">Biography</Text>
+                <Text className="text-white font-semibold mb-2">{t('profile.biography')}</Text>
                 <Text className="text-gray-300 leading-relaxed">
-                  {currentUser.bio || 'Follow to stay updated with their latest discoveries.'}
+                  {currentUser.bio || t('profile.bioFallback')}
                 </Text>
               </View>
               {(() => {
@@ -1211,11 +1306,11 @@ const Profile: React.FC = () => {
                 if (!Array.isArray(genres) || genres.length === 0) return null;
                 return (
                   <View className="bg-dark-800 rounded-lg p-4">
-                    <Text className="text-white font-semibold mb-3">Favorite Genres</Text>
+                    <Text className="text-white font-semibold mb-3">{t('profile.favoriteGenres')}</Text>
                     <View className="flex-row flex-wrap gap-2">
                       {genres.map((genre, i) => (
                         <View key={i} className="px-3 py-1.5 bg-primary-600 rounded-full">
-                          <Text className="text-white text-sm font-medium">{genre}</Text>
+                          <Text className="text-white text-sm font-medium">{genreLabel(genre)}</Text>
                         </View>
                       ))}
                     </View>
@@ -1223,18 +1318,18 @@ const Profile: React.FC = () => {
                 );
               })()}
               <View className="bg-dark-800 rounded-lg p-4">
-                <Text className="text-white font-semibold mb-3">Connect</Text>
+                <Text className="text-white font-semibold mb-3">{t('profile.connect')}</Text>
                 <View className="flex-row flex-wrap gap-2">
                   <TouchableOpacity
                     onPress={handleShareProfile}
                     className="flex-row items-center gap-2 px-4 py-2 bg-dark-700 rounded-lg"
                   >
                     {profileLinkCopied ? <Check size={16} color="#34d399" /> : <Share2 size={16} color="white" />}
-                    <Text className="text-white text-sm">{profileLinkCopied ? 'Shared!' : 'Share profile'}</Text>
+                    <Text className="text-white text-sm">{profileLinkCopied ? t('profile.shared') : t('profile.shareProfile')}</Text>
                   </TouchableOpacity>
                   {isCurrentUserPro && (
                     <TouchableOpacity onPress={openExternalLinksModal}>
-                      <Text className="text-primary-400 text-sm py-2">Website & social links</Text>
+                      <Text className="text-primary-400 text-sm py-2">{t('profile.links')}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -1249,10 +1344,10 @@ const Profile: React.FC = () => {
         <View className="flex-1 bg-black/60 justify-end">
           <ScrollView className="bg-white rounded-t-2xl" style={{ maxHeight: '85%' }}>
             <View className="p-6">
-              <Text className="text-xl font-bold text-black mb-4">Edit Profile</Text>
+              <Text className="text-xl font-bold text-black mb-4">{t('profile.editProfile')}</Text>
               <View className="gap-4">
                 <View>
-                  <Text className="text-black font-medium mb-2">Username</Text>
+                  <Text className="text-black font-medium mb-2">{t('profile.username')}</Text>
                   <TextInput
                     value={editForm.username}
                     onChangeText={v => setEditForm(prev => ({ ...prev, username: v }))}
@@ -1263,9 +1358,9 @@ const Profile: React.FC = () => {
                 {isCurrentUserPro && (
                   <View>
                     <Text className="text-black font-medium mb-1">
-                      Vanity URL <Text className="text-yellow-700 text-xs font-bold bg-yellow-100 px-1 rounded">PRO</Text>
+                      {t('profile.vanityUrl')} <Text className="text-yellow-700 text-xs font-bold bg-yellow-100 px-1 rounded">{t('profile.artistBadge')}</Text>
                     </Text>
-                    <Text className="text-gray-500 text-xs mb-2">Lowercase letters, numbers, hyphens (3–30 chars)</Text>
+                    <Text className="text-gray-500 text-xs mb-2">{t('profile.vanityHint')}</Text>
                     <View className="flex-row border border-gray-300 rounded-lg overflow-hidden">
                       <View className="px-3 py-2 bg-gray-50 border-r border-gray-300">
                         <Text className="text-gray-400 text-sm">@</Text>
@@ -1282,13 +1377,38 @@ const Profile: React.FC = () => {
                     {vanityError && <Text className="text-red-500 text-xs mt-1">{vanityError}</Text>}
                   </View>
                 )}
+                {isCurrentUserPro && (
+                  <View>
+                    <Text className="text-black font-medium mb-1">
+                      {t('profile.profileBanner')} <Text className="text-yellow-700 text-xs font-bold bg-yellow-100 px-1 rounded">{t('profile.artistBadge')}</Text>
+                    </Text>
+                    {editForm.bannerUrl ? (
+                      <View className="gap-2">
+                        <Image source={{ uri: editForm.bannerUrl }} style={{ width: '100%', height: 80, borderRadius: 8 }} resizeMode="cover" />
+                        <TouchableOpacity onPress={handlePickBanner} disabled={isUploadingBanner}>
+                          <Text className="text-primary-600 text-sm">{isUploadingBanner ? t('profile.uploading') : t('profile.changeBanner')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={handlePickBanner}
+                        disabled={isUploadingBanner}
+                        className="border border-dashed border-gray-300 rounded-lg py-4 items-center"
+                      >
+                        {isUploadingBanner
+                          ? <ActivityIndicator size="small" color="#000" />
+                          : <Text className="text-gray-500 text-sm">{t('profile.addBanner')}</Text>}
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
                 <View>
-                  <Text className="text-black font-medium mb-2">Bio</Text>
+                  <Text className="text-black font-medium mb-2">{t('profile.bio')}</Text>
                   <TextInput
                     value={editForm.bio}
                     onChangeText={v => setEditForm(prev => ({ ...prev, bio: v }))}
                     className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-black text-sm"
-                    placeholder="Tell people about yourself…"
+                    placeholder={t('profile.bioEditPlaceholder')}
                     placeholderTextColor="#9ca3af"
                     multiline
                     numberOfLines={3}
@@ -1301,13 +1421,13 @@ const Profile: React.FC = () => {
                   disabled={isSaving}
                   className={`flex-1 py-2.5 rounded-lg items-center ${isSaving ? 'bg-primary-600/50' : 'bg-primary-600'}`}
                 >
-                  <Text className="text-white text-sm font-medium">{isSaving ? 'Saving...' : 'Save Changes'}</Text>
+                  <Text className="text-white text-sm font-medium">{isSaving ? t('profile.saving') : t('profile.saveChanges')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setIsEditing(false)}
                   className="flex-1 py-2.5 bg-gray-200 rounded-lg items-center"
                 >
-                  <Text className="text-gray-800 text-sm">Cancel</Text>
+                  <Text className="text-gray-800 text-sm">{t('common.cancel')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1319,8 +1439,8 @@ const Profile: React.FC = () => {
       <Modal visible={!!showDeleteConfirm} transparent animationType="fade" onRequestClose={() => setShowDeleteConfirm(null)}>
         <View className="flex-1 bg-black/50 items-center justify-center p-4">
           <View className="bg-dark-900 rounded-2xl w-full max-w-sm p-6">
-            <Text className="text-xl font-bold text-white mb-3">Delete Track</Text>
-            <Text className="text-gray-400 mb-6">Are you sure you want to delete this track? This action cannot be undone.</Text>
+            <Text className="text-xl font-bold text-white mb-3">{t('profile.deleteTrack')}</Text>
+            <Text className="text-gray-400 mb-6">{t('profile.deleteTrackBody')}</Text>
             <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => showDeleteConfirm && handleDeleteTrack(showDeleteConfirm)}
@@ -1328,14 +1448,14 @@ const Profile: React.FC = () => {
                 className={`flex-1 py-2.5 rounded-lg items-center ${deletingTrackId === showDeleteConfirm ? 'bg-red-600/50' : 'bg-red-600'}`}
               >
                 <Text className="text-white font-semibold">
-                  {deletingTrackId === showDeleteConfirm ? 'Deleting...' : 'Delete'}
+                  {deletingTrackId === showDeleteConfirm ? t('profile.deleting') : t('profile.delete')}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setShowDeleteConfirm(null)}
                 className="flex-1 py-2.5 bg-dark-700 rounded-lg items-center"
               >
-                <Text className="text-white">Cancel</Text>
+                <Text className="text-white">{t('common.cancel')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1350,14 +1470,14 @@ const Profile: React.FC = () => {
         onRequestClose={() => { setShowFollowersModal(false); setFollowersSearch(''); }}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: '#121212', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '88%' }}>
+          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '88%' }}>
             <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 4 }}>
               <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' }} />
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 }}>
               <View>
-                <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>Followers</Text>
-                <Text style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, marginTop: 2 }}>{followStats.followers} people follow you</Text>
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>{t('profile.followers')}</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, marginTop: 2 }}>{t('profile.followersCount', { count: followStats.followers })}</Text>
               </View>
               <TouchableOpacity onPress={() => { setShowFollowersModal(false); setFollowersSearch(''); }} style={{ padding: 6 }}>
                 <X size={22} color="rgba(255,255,255,0.6)" />
@@ -1368,7 +1488,7 @@ const Profile: React.FC = () => {
               <TextInput
                 value={followersSearch}
                 onChangeText={setFollowersSearch}
-                placeholder="Search followers"
+                placeholder={t('profile.searchFollowers')}
                 placeholderTextColor="rgba(255,255,255,0.35)"
                 style={{ flex: 1, marginLeft: 8, color: '#fff', fontSize: 14 }}
                 autoCapitalize="none"
@@ -1381,8 +1501,8 @@ const Profile: React.FC = () => {
             </View>
             {isFollowersLoading ? (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                <ActivityIndicator size="large" color="#a78bfa" />
-                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Loading…</Text>
+                <ActivityIndicator size="large" color="#000000" />
+                <Text style={{ color: '#000000', fontSize: 13 }}>{t('profile.loadingShort')}</Text>
               </View>
             ) : (
               <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
@@ -1390,10 +1510,10 @@ const Profile: React.FC = () => {
                   <View style={{ alignItems: 'center', paddingTop: 56 }}>
                     <Users size={48} color="#374151" strokeWidth={1.5} />
                     <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginTop: 16 }}>
-                      {followersSearch ? 'No results' : 'No followers yet'}
+                      {followersSearch ? t('profile.noResults') : t('profile.noFollowers')}
                     </Text>
                     <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginTop: 6 }}>
-                      {followersSearch ? `No one matches "${followersSearch}"` : 'Share your profile to get followers'}
+                      {followersSearch ? t('profile.noMatch', { query: followersSearch }) : t('profile.shareToGetFollowers')}
                     </Text>
                   </View>
                 ) : (
@@ -1407,13 +1527,13 @@ const Profile: React.FC = () => {
                             <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }} numberOfLines={1}>{f.username}</Text>
                             <VerifiedBadge verified={f.isVerified || f.isVerifiedArtist} size={13} />
                           </View>
-                          {f.role ? <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 1, textTransform: 'capitalize' }}>{f.role}</Text> : null}
+                          {f.role ? <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 1, textTransform: 'capitalize' }}>{t(`profile.roles.${f.role}`, { defaultValue: f.role })}</Text> : null}
                         </View>
                         <TouchableOpacity
                           onPress={() => handleRemoveFollower(f.id)}
                           style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
                         >
-                          <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600' }}>Remove</Text>
+                          <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600' }}>{t('profile.remove')}</Text>
                         </TouchableOpacity>
                       </View>
                     ))
@@ -1432,14 +1552,14 @@ const Profile: React.FC = () => {
         onRequestClose={() => { setShowFollowingModal(false); setFollowingSearch(''); }}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: '#121212', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '88%' }}>
+          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '88%' }}>
             <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 4 }}>
               <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' }} />
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 }}>
               <View>
-                <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>Following</Text>
-                <Text style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, marginTop: 2 }}>You follow {followStats.following} people</Text>
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>{t('profile.following')}</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, marginTop: 2 }}>{t('profile.followingCount', { count: followStats.following })}</Text>
               </View>
               <TouchableOpacity onPress={() => { setShowFollowingModal(false); setFollowingSearch(''); }} style={{ padding: 6 }}>
                 <X size={22} color="rgba(255,255,255,0.6)" />
@@ -1450,7 +1570,7 @@ const Profile: React.FC = () => {
               <TextInput
                 value={followingSearch}
                 onChangeText={setFollowingSearch}
-                placeholder="Search following"
+                placeholder={t('profile.searchFollowing')}
                 placeholderTextColor="rgba(255,255,255,0.35)"
                 style={{ flex: 1, marginLeft: 8, color: '#fff', fontSize: 14 }}
                 autoCapitalize="none"
@@ -1463,8 +1583,8 @@ const Profile: React.FC = () => {
             </View>
             {isFollowingListLoading ? (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                <ActivityIndicator size="large" color="#a78bfa" />
-                <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Loading…</Text>
+                <ActivityIndicator size="large" color="#000000" />
+                <Text style={{ color: '#000000', fontSize: 13 }}>{t('profile.loadingShort')}</Text>
               </View>
             ) : (
               <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
@@ -1472,10 +1592,10 @@ const Profile: React.FC = () => {
                   <View style={{ alignItems: 'center', paddingTop: 56 }}>
                     <UserIcon size={48} color="#374151" strokeWidth={1.5} />
                     <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginTop: 16 }}>
-                      {followingSearch ? 'No results' : 'Not following anyone yet'}
+                      {followingSearch ? t('profile.noResults') : t('profile.notFollowing')}
                     </Text>
                     <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, marginTop: 6 }}>
-                      {followingSearch ? `No one matches "${followingSearch}"` : 'Discover artists to follow'}
+                      {followingSearch ? t('profile.noMatch', { query: followingSearch }) : t('profile.discoverToFollow')}
                     </Text>
                   </View>
                 ) : (
@@ -1489,13 +1609,13 @@ const Profile: React.FC = () => {
                             <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }} numberOfLines={1}>{f.username}</Text>
                             <VerifiedBadge verified={f.isVerified || f.isVerifiedArtist} size={13} />
                           </View>
-                          {f.role ? <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 1, textTransform: 'capitalize' }}>{f.role}</Text> : null}
+                          {f.role ? <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 1, textTransform: 'capitalize' }}>{t(`profile.roles.${f.role}`, { defaultValue: f.role })}</Text> : null}
                         </View>
                         <TouchableOpacity
                           onPress={() => handleUnfollowFromFollowingList(f.id)}
                           style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
                         >
-                          <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600' }}>Unfollow</Text>
+                          <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600' }}>{t('profile.unfollow')}</Text>
                         </TouchableOpacity>
                       </View>
                     ))
@@ -1511,14 +1631,14 @@ const Profile: React.FC = () => {
         <View className="flex-1 bg-black/70 justify-end">
           <View className="bg-dark-800 rounded-t-2xl" style={{ maxHeight: '60%' }}>
             <View className="flex-row items-center justify-between px-5 py-4 border-b border-dark-700/60">
-              <Text className="text-base font-semibold text-white">Follow Requests</Text>
+              <Text className="text-base font-semibold text-white">{t('profile.followRequests')}</Text>
               <TouchableOpacity onPress={() => setShowPendingRequestsModal(false)} className="p-1.5">
                 <X size={18} color="#6b7280" />
               </TouchableOpacity>
             </View>
             <ScrollView className="flex-1 px-4 py-3">
               {pendingRequests.length === 0 ? (
-                <Text className="text-center text-gray-400 py-8">No pending requests.</Text>
+                <Text className="text-center text-gray-400 py-8">{t('profile.noRequests')}</Text>
               ) : (
                 pendingRequests.map(req => (
                   <FollowRequestCard
@@ -1540,19 +1660,19 @@ const Profile: React.FC = () => {
         <View className="flex-1 bg-black/70 justify-end">
           <View className="bg-dark-800 rounded-t-2xl">
             <View className="flex-row items-center justify-between px-5 py-4 border-b border-dark-700/60">
-              <Text className="text-base font-semibold text-white">Links to other sites</Text>
+              <Text className="text-base font-semibold text-white">{t('profile.linksTitle')}</Text>
               <TouchableOpacity onPress={() => setShowLinksModal(false)} className="p-1.5">
                 <X size={18} color="#6b7280" />
               </TouchableOpacity>
             </View>
             <View className="p-5 gap-3">
-              <Text className="text-gray-400 text-sm">Add up to 3 links (e.g. Twitter, Instagram, Bandcamp).</Text>
+              <Text className="text-gray-400 text-sm">{t('profile.linksHint')}</Text>
               {linkInputs.map((value, i) => (
                 <TextInput
                   key={i}
                   value={value}
                   onChangeText={v => { const next = [...linkInputs]; next[i] = v; setLinkInputs(next); }}
-                  placeholder={`Link ${i + 1}`}
+                  placeholder={t('profile.linkN', { n: i + 1 })}
                   placeholderTextColor="#6b7280"
                   className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm"
                   autoCapitalize="none"
@@ -1561,14 +1681,14 @@ const Profile: React.FC = () => {
               ))}
               <View className="flex-row justify-end gap-2 mt-2">
                 <TouchableOpacity onPress={() => setShowLinksModal(false)} className="px-4 py-2 rounded-lg bg-dark-600">
-                  <Text className="text-white">Cancel</Text>
+                  <Text className="text-white">{t('common.cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveLinks}
                   disabled={isSavingLinks}
                   className={`px-4 py-2 rounded-lg ${isSavingLinks ? 'bg-primary-600/50' : 'bg-primary-600'}`}
                 >
-                  <Text className="text-white">{isSavingLinks ? 'Saving...' : 'Save'}</Text>
+                  <Text className="text-white">{isSavingLinks ? t('profile.saving') : t('common.save')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1596,12 +1716,20 @@ const ConcertForm: React.FC<{
 }> = ({ form, setForm, onSave, onCancel, label }) => (
   <View className="gap-3">
     {[
-      { key: 'title', label: 'Concert Title', placeholder: 'Concert title' },
-      { key: 'date', label: 'Date (YYYY-MM-DD)', placeholder: '2025-12-31' },
-      { key: 'venue', label: 'Venue', placeholder: 'Venue name' },
-      { key: 'location', label: 'Location', placeholder: 'City, State/Country' },
-      { key: 'ticketPrice', label: 'Ticket Price', placeholder: 'Price (optional)', numeric: true },
-      { key: 'ticketUrl', label: 'Ticket URL', placeholder: 'https://...', url: true },
+      { key: 'title', label: i18n.t('concertForm.title'), placeholder: i18n.t('concertForm.titlePh') },
+      { key: 'date', label: i18n.t('concertForm.date'), placeholder: `${new Date().getFullYear()}-12-31` },
+      { key: 'venue', label: i18n.t('concertForm.venue'), placeholder: i18n.t('concertForm.venuePh') },
+      { key: 'location', label: i18n.t('concertForm.location'), placeholder: i18n.t('concertForm.locationPh') },
+      { key: 'ticketPrice', label: i18n.t('concertForm.price'), placeholder: i18n.t('concertForm.pricePh'), numeric: true },
+      ...(IN_APP_TICKETS_ENABLED
+        ? [{ key: 'capacity', label: i18n.t('concertForm.capacity'), placeholder: i18n.t('concertForm.capacityPh'), numeric: true }]
+        : []),
+      {
+        key: 'ticketUrl',
+        label: i18n.t('concertForm.url'),
+        placeholder: IN_APP_TICKETS_ENABLED ? i18n.t('concertForm.urlPhInApp') : i18n.t('concertForm.urlPh'),
+        url: true,
+      },
     ].map(field => (
       <View key={field.key}>
         <Text className="text-gray-300 text-xs font-medium mb-1">{field.label}</Text>
@@ -1617,12 +1745,12 @@ const ConcertForm: React.FC<{
       </View>
     ))}
     <View>
-      <Text className="text-gray-300 text-xs font-medium mb-1">Description</Text>
+      <Text className="text-gray-300 text-xs font-medium mb-1">{i18n.t('concertForm.description')}</Text>
       <TextInput
         value={form.description}
         onChangeText={(v: string) => setForm((prev: any) => ({ ...prev, description: v }))}
         className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm"
-        placeholder="Concert description (optional)"
+        placeholder={i18n.t('concertForm.descriptionPh')}
         placeholderTextColor="#6b7280"
         multiline
         numberOfLines={3}
@@ -1633,7 +1761,7 @@ const ConcertForm: React.FC<{
         <Text className="text-white font-semibold text-sm">{label}</Text>
       </TouchableOpacity>
       <TouchableOpacity onPress={onCancel} className="flex-1 py-2.5 bg-dark-700 rounded-lg items-center">
-        <Text className="text-white text-sm">Cancel</Text>
+        <Text className="text-white text-sm">{i18n.t('common.cancel')}</Text>
       </TouchableOpacity>
     </View>
   </View>

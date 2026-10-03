@@ -3,6 +3,10 @@ module.exports = {
   content: ['./App.tsx', './src/**/*.{js,jsx,ts,tsx}'],
   presets: [require('nativewind/preset')],
   theme: {
+    fontFamily: {
+      sans: ['MaruMinyaHangul'],
+      mono: ['jetbrains_mono_regular'],
+    },
     extend: {
       colors: {
         // Electric green — matches web --sidebar-primary (#8aec9f)

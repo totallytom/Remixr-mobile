@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Remixr",
-    "slug": "Remixr",
+    "name": "Re-Mixed",
+    "slug": "remixr",
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "sypher",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
-    "icon": "./assets/logo.png",
+    "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/logo.png",
       "resizeMode": "contain",
@@ -15,16 +15,39 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.sypher.mobile"
+      "bundleIdentifier": "com.sypher.mobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "audio"
+        ],
+        "CFBundleAllowMixedLocalizations": true
+      }
+    },
+    "locales": {
+      "en": "./locales/native/en.json",
+      "ko": "./locales/native/ko.json",
+      "ja": "./locales/native/ja.json"
     },
     "android": {
-      "permissions": ["FOREGROUND_SERVICE", "WAKE_LOCK"],
+      "permissions": [
+        "FOREGROUND_SERVICE",
+        "WAKE_LOCK"
+      ],
       "intentFilters": [
         {
           "action": "VIEW",
-          "autoVerify": "true",
-          "data": [{ "scheme": "https", "host": "www.re-mixed.net"}],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "www.re-mixed.net"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "adaptiveIcon": {
@@ -46,7 +69,37 @@
     },
     "owner": "totallytom",
     "plugins": [
-      "expo-font"
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/MaruMinyaHangul.ttf",
+            "./assets/fonts/jetbrains_mono_regular.ttf"
+          ]
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Re-Mixed uses the microphone to record your responses to challenges."
+        }
+      ],
+      "expo-asset",
+      "expo-localization",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Re-Mixed uses your photo library to add cover art, profile pictures and banners.",
+          "cameraPermission": "Re-Mixed uses the camera to take photos for cover art and your profile, and to scan concert tickets."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Re-Mixed uses the camera to take photos for cover art and your profile, and to scan concert tickets.",
+          "recordAudioAndroid": false
+        }
+      ]
     ]
   }
 }

@@ -13,6 +13,8 @@ export const STORAGE_KEYS = {
   SUPABASE_SESSION:  'supabase.auth.session',
   BACKGROUND_PRESET: 'sypher_background_preset',
   PLAYER_PALETTE:    'sypher_player_palette',
+  REDUCE_MOTION:     'sypher_reduce_motion',
+  LANGUAGE:          'sypher_language',
   deletedChats:      (userId: string) => `deleted_chats_${userId}`,
   onboardingPending: (userId: string) => `sypher_onboarding_pending_${userId}`,
 } as const;

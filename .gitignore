@@ -3,6 +3,9 @@ node_modules/
 .pnp
 .pnp.js
 
+# Supabase
+supabase/
+
 # Expo
 .expo/
 dist/

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { toAppError } from '../utils/appError';
 
 export interface Album {
   id: string;
@@ -132,7 +133,7 @@ export class AlbumService {
         trackCount: 0
       };
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to create album');
+      throw toAppError(error, 'errors.generic.album');
     }
   }
 
@@ -172,7 +173,7 @@ export class AlbumService {
         trackCount: 0
       };
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to update album');
+      throw toAppError(error, 'errors.generic.album');
     }
   }
 
@@ -187,7 +188,7 @@ export class AlbumService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to delete album');
+      throw toAppError(error, 'errors.generic.album');
     }
   }
 }

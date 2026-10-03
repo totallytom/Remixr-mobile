@@ -1,13 +1,19 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
+  Text as RNText,
   TextInput,
   TouchableOpacity,
   Modal,
   Pressable,
   ActivityIndicator,
+  type TextProps,
 } from 'react-native';
+import { FONTS } from '../../utils/fonts';
+
+const Text = ({ style, ...props }: TextProps) => (
+  <RNText style={[{ fontFamily: FONTS.body }, style]} {...props} />
+);
 import {
   Search as SearchIcon,
   X,
@@ -16,6 +22,7 @@ import {
   User,
   Calendar,
 } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
 
 export type SearchCategory = 'music' | 'users' | 'concerts';
 
@@ -24,9 +31,9 @@ const CATEGORY_OPTIONS: {
   label: string;
   Icon: React.ComponentType<{ size: number; color: string }>;
 }[] = [
-  { value: 'music', label: 'Music', Icon: Music },
-  { value: 'users', label: 'Users', Icon: User },
-  { value: 'concerts', label: 'Concerts', Icon: Calendar },
+  { value: 'music', label: 'search.music', Icon: Music },
+  { value: 'users', label: 'search.users', Icon: User },
+  { value: 'concerts', label: 'search.concerts', Icon: Calendar },
 ];
 
 interface SearchBarProps {
@@ -46,24 +53,25 @@ const SearchBar: React.FC<SearchBarProps> = ({
   onClear,
   category,
   onCategoryChange,
-  placeholder = 'Search for music, people, or events...',
+  placeholder,
   isSearching = false,
   disabled = false,
 }) => {
+  const { t } = useTranslation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const currentOption =
     CATEGORY_OPTIONS.find((o) => o.value === category) ?? CATEGORY_OPTIONS[0];
   const { Icon: CurrentIcon } = currentOption;
 
   return (
-    <View className="flex-row w-full rounded-full bg-dark-800 border border-dark-600 overflow-hidden">
+    <View className="flex-row w-full rounded-full bg-white border border-white overflow-hidden">
       {/* Category selector */}
       <TouchableOpacity
         onPress={() => setDropdownOpen(true)}
-        className="flex-row items-center gap-2 px-4 py-3 border-r border-dark-600 bg-dark-700"
+        className="flex-row items-center gap-2 px-4 py-3 border-r border-dark-600 bg-black"
       >
         <CurrentIcon size={16} color="#9ca3af" />
-        <Text className="text-sm font-medium text-white">{currentOption.label}</Text>
+        <Text className="text-sm font-medium text-white">{t(currentOption.label)}</Text>
         <ChevronDown size={14} color="#9ca3af" />
       </TouchableOpacity>
 
@@ -72,15 +80,15 @@ const SearchBar: React.FC<SearchBarProps> = ({
         <TextInput
           value={value}
           onChangeText={onChange}
-          placeholder={placeholder}
+          placeholder={placeholder ?? t('search.placeholder')}
           placeholderTextColor="#6b7280"
           editable={!disabled}
           returnKeyType="search"
-          className="flex-1 py-3 pl-4 pr-10 text-white text-sm"
+          className="flex-1 py-3 pl-4 pr-10 text-black text-sm"
         />
         <View className="absolute right-3">
           {isSearching ? (
-            <ActivityIndicator size="small" color="#a3e635" />
+            <ActivityIndicator size="small" color="#000000" />
           ) : value ? (
             <TouchableOpacity onPress={onClear} className="p-1">
               <X size={18} color="#6b7280" />
@@ -115,7 +123,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 >
                   <Icon size={16} color={active ? '#a3e635' : '#9ca3af'} />
                   <Text className={`text-sm ${active ? 'text-lime-400' : 'text-white'}`}>
-                    {opt.label}
+                    {t(opt.label)}
                   </Text>
                 </TouchableOpacity>
               );

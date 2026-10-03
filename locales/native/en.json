@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Re-Mixed",
+    "NSMicrophoneUsageDescription": "Re-Mixed uses the microphone to record your responses to challenges.",
+    "NSPhotoLibraryUsageDescription": "Re-Mixed uses your photo library to add cover art, profile pictures and banners.",
+    "NSCameraUsageDescription": "Re-Mixed uses the camera to take photos for cover art and your profile, and to scan concert tickets."
+  }
+}

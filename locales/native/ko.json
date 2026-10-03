@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Re-Mixed",
+    "NSMicrophoneUsageDescription": "Re-Mixed는 챌린지 응답을 녹음하기 위해 마이크를 사용합니다.",
+    "NSPhotoLibraryUsageDescription": "Re-Mixed는 커버 아트, 프로필 사진, 배너를 추가하기 위해 사진 보관함을 사용합니다.",
+    "NSCameraUsageDescription": "Re-Mixed는 커버 아트와 프로필 사진을 촬영하고 공연 티켓을 스캔하기 위해 카메라를 사용합니다."
+  }
+}

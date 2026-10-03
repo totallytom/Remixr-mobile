@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
-  Text,
+  Text as RNText,
   Image,
   Modal,
   TouchableOpacity,
@@ -10,7 +10,13 @@ import {
   Easing,
   Dimensions,
   StatusBar,
+  type TextProps,
 } from 'react-native';
+import { FONTS } from '../../utils/fonts';
+
+const Text = ({ style, ...props }: TextProps) => (
+  <RNText style={[{ fontFamily: FONTS.body }, style]} {...props} />
+);
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Rect } from 'react-native-svg';
 import { X } from 'lucide-react-native';
@@ -264,7 +270,7 @@ const CassettePlayer: React.FC<Props> = ({
               <View style={[s.brandRow, { paddingLeft: safeL + 16, paddingRight: safeR + 16 }]}>
                 <Text style={s.brandCursive}>Fine-Brewed Tape</Text>
                 <Text style={s.brandSmall}>TestDrive-1</Text>
-                <Text style={s.brandCursive}>Remixr</Text>
+                <Text style={s.brandCursive}>Re-Mixed</Text>
                 <Text style={s.brandSmall}>Low input / High Volume</Text>
                 <Text style={s.cModel}>C-130</Text>
               </View>
@@ -423,9 +429,9 @@ const s = StyleSheet.create({
   },
   sideAText:   { color: '#000', fontSize: 9, fontWeight: '900', letterSpacing: 1, textAlign: 'center' },
   labelCenter: { flex: 1 },
-  titleText:   { color: '#fff', fontSize: 30, fontWeight: '700', fontFamily: 'monospace', letterSpacing: 0.5 },
+  titleText:   { color: '#fff', fontSize: 30, fontWeight: '700', fontFamily: FONTS.body, letterSpacing: 0.5 },
   titleLine:   { height: 1, backgroundColor: 'rgba(255,255,255,0.35)', marginVertical: 5 },
-  artistText:  { color: 'rgba(255,255,255,0.75)', fontSize: 13, fontFamily: 'monospace' },
+  artistText:  { color: 'rgba(255,255,255,0.75)', fontSize: 13, fontFamily: FONTS.body },
   noiseBox: {
     alignItems: 'center',
     borderWidth: 1,
@@ -466,7 +472,7 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
     fontSize: 8,
     fontWeight: '800',
-    fontFamily: 'monospace',
+    fontFamily: FONTS.body,
     letterSpacing: 2,
     marginBottom: 10,
   },
@@ -486,7 +492,7 @@ const s = StyleSheet.create({
     color: '#fff',
     fontSize: 10,
     fontWeight: '900',
-    fontFamily: 'monospace',
+    fontFamily: FONTS.body,
   },
 
   // Tape window
@@ -522,7 +528,7 @@ const s = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     fontStyle: 'italic',
-    fontFamily: 'monospace',
+    fontFamily: FONTS.body,
     color: '#fff290',
     letterSpacing: 0.5,
     lineHeight: 13,
@@ -542,7 +548,7 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     paddingTop: 4,
   },
-  timeText: { color: '#fff', fontSize: 9, fontFamily: 'monospace', fontWeight: '700' },
+  timeText: { color: '#fff', fontSize: 9, fontFamily: FONTS.body, fontWeight: '700' },
 
   // Control bar
   ctrlBar: {

@@ -1,4 +1,6 @@
 import { supabase } from './supabase';
+import { normalizeTicketUrl, todayKey } from '../utils/concerts';
+import { toAppError } from '../utils/appError';
 
 export interface Concert {
   id: string;
@@ -9,6 +11,7 @@ export interface Concert {
   description?: string;
   ticketPrice?: number;
   ticketUrl?: string;
+  capacity?: number;
   userId: string;
   createdAt: string;
   updatedAt: string;
@@ -22,6 +25,7 @@ export interface CreateConcertData {
   description?: string;
   ticketPrice?: number;
   ticketUrl?: string;
+  capacity?: number;
   userId: string;
 }
 
@@ -35,7 +39,9 @@ export interface ConcertWithUser extends Concert {
 }
 
 export class ConcertService {
-  // Get all concerts (for Discover), with user info. Upcoming first, then by date.
+  // Upcoming concerts (today onward), soonest first, with host info. Filtering
+  // in the query matters: filtering after `limit` let past shows fill the page
+  // and push new ones out once enough had accumulated.
   static async getAllConcerts(limit = 50): Promise<ConcertWithUser[]> {
     try {
       const { data, error } = await supabase
@@ -44,6 +50,7 @@ export class ConcertService {
           *,
           users(id, username, avatar, artist_name)
         `)
+        .gte('date', todayKey())
         .order('date', { ascending: true })
         .limit(limit);
 
@@ -111,7 +118,9 @@ export class ConcertService {
       // Only include optional fields if they have values
       if (data.description) insertData.description = data.description;
       if (data.ticketPrice !== undefined) insertData.ticket_price = data.ticketPrice;
-      if (data.ticketUrl) insertData.ticket_url = data.ticketUrl;
+      const ticketUrl = normalizeTicketUrl(data.ticketUrl);
+      if (ticketUrl) insertData.ticket_url = ticketUrl;
+      if (data.capacity !== undefined) insertData.capacity = data.capacity;
 
       const { data: concertData, error } = await supabase
         .from('concerts')
@@ -126,7 +135,7 @@ export class ConcertService {
 
       return this.transformConcert(concertData);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to create concert');
+      throw toAppError(error, 'errors.generic.concert');
     }
   }
 
@@ -155,7 +164,11 @@ export class ConcertService {
         updateData.ticket_price = updates.ticketPrice || undefined;
       }
       if (updates.ticketUrl !== undefined) {
-        updateData.ticket_url = updates.ticketUrl || undefined;
+        // null (not undefined) so clearing the field actually removes the link.
+        updateData.ticket_url = normalizeTicketUrl(updates.ticketUrl);
+      }
+      if (updates.capacity !== undefined) {
+        updateData.capacity = updates.capacity || undefined;
       }
 
       const { data, error } = await supabase
@@ -173,7 +186,7 @@ export class ConcertService {
 
       return this.transformConcert(data);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to update concert');
+      throw toAppError(error, 'errors.generic.concert');
     }
   }
 
@@ -190,7 +203,7 @@ export class ConcertService {
         throw new Error(error.message);
       }
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to delete concert');
+      throw toAppError(error, 'errors.generic.concert');
     }
   }
 
@@ -205,6 +218,7 @@ export class ConcertService {
       description: dbConcert.description,
       ticketPrice: dbConcert.ticket_price,
       ticketUrl: dbConcert.ticket_url,
+      capacity: dbConcert.capacity,
       userId: dbConcert.user_id,
       createdAt: dbConcert.created_at,
       updatedAt: dbConcert.updated_at,

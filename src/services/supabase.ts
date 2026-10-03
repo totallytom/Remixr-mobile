@@ -194,7 +194,7 @@ export interface Database {
           album_id?: string;
           duration: number;
           cover: string;
-          audio_url: string;
+          audio_url?: string;
           price?: number;
           genre: string;
           user_id: string;
@@ -211,7 +211,7 @@ export interface Database {
           album_id?: string;
           duration: number;
           cover: string;
-          audio_url: string;
+          audio_url?: string;
           price?: number;
           genre: string;
           user_id: string;
@@ -561,6 +561,7 @@ export interface Database {
           description?: string;
           ticket_price?: number;
           ticket_url?: string;
+          capacity?: number;
           user_id: string;
           created_at: string;
           updated_at: string;
@@ -574,6 +575,7 @@ export interface Database {
           description?: string;
           ticket_price?: number;
           ticket_url?: string;
+          capacity?: number;
           user_id: string;
           created_at?: string;
           updated_at?: string;
@@ -587,6 +589,7 @@ export interface Database {
           description?: string;
           ticket_price?: number;
           ticket_url?: string;
+          capacity?: number;
           user_id?: string;
           created_at?: string;
           updated_at?: string;
@@ -595,6 +598,54 @@ export interface Database {
           {
             foreignKeyName: "concerts_user_id_fkey";
             columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      tickets: {
+        Row: {
+          id: string;
+          concert_id: string;
+          buyer_id: string;
+          stripe_payment_intent_id: string;
+          qr_token: string;
+          status: string;
+          redeemed_at?: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          concert_id: string;
+          buyer_id: string;
+          stripe_payment_intent_id: string;
+          qr_token?: string;
+          status?: string;
+          redeemed_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          concert_id?: string;
+          buyer_id?: string;
+          stripe_payment_intent_id?: string;
+          qr_token?: string;
+          status?: string;
+          redeemed_at?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "tickets_concert_id_fkey";
+            columns: ["concert_id"];
+            isOneToOne: false;
+            referencedRelation: "concerts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "tickets_buyer_id_fkey";
+            columns: ["buyer_id"];
             isOneToOne: false;
             referencedRelation: "users";
             referencedColumns: ["id"];

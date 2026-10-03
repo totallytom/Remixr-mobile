@@ -1,4 +1,6 @@
 import { supabase } from './supabase';
+import { withoutHiddenUsers } from './blockService';
+import { toAppError } from '../utils/appError';
 
 export interface Post {
   id: string;
@@ -36,9 +38,9 @@ export class PostsService {
 
       if (error) throw new Error(error.message);
 
-      return data.map(post => this.transformPost(post));
+      return withoutHiddenUsers(data, (p: any) => p.user_id).map(post => this.transformPost(post));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch posts');
+      throw toAppError(error, 'errors.generic.post');
     }
   }
 
@@ -63,7 +65,7 @@ export class PostsService {
 
       return data.map(post => this.transformPost(post));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch user posts');
+      throw toAppError(error, 'errors.generic.post');
     }
   }
 
@@ -105,7 +107,7 @@ export class PostsService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to like/unlike post');
+      throw toAppError(error, 'errors.generic.post');
     }
   }
 
@@ -119,7 +121,7 @@ export class PostsService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to delete post');
+      throw toAppError(error, 'errors.generic.post');
     }
   }
 

@@ -8,10 +8,18 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { Audio } from 'expo-av';
+import { RecordingPresets, requestRecordingPermissionsAsync, useAudioRecorder, type AudioPlayer } from 'expo-audio';
+import {
+  applyPlaybackAudioMode,
+  applyRecordingAudioMode,
+  createPreviewPlayer,
+  releasePlayer,
+  waitUntilLoaded,
+} from '../../services/audio';
 import { X, Mic, Square, Play, Pause, RotateCcw, Send } from 'lucide-react-native';
 import { useStore } from '../../store/useStore';
 import { MusicService } from '../../services/musicService';
+import i18n from '../../i18n';
 
 const MAX_SEC = 30;
 
@@ -31,16 +39,17 @@ interface Props {
 }
 
 export default function ChallengeRecordModal({ visible, track, onClose }: Props) {
-  const { user } = useStore();
+  const { user, pauseTrack } = useStore() as any;
   const [stage, setStage] = useState<Stage>('idle');
   const [elapsed, setElapsed] = useState(0);
   const [uri, setUri] = useState<string | null>(null);
   const [isPlayingBack, setIsPlayingBack] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const recRef = useRef<Audio.Recording | null>(null);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const isRecordingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const playbackRef = useRef<Audio.Sound | null>(null);
+  const playbackRef = useRef<AudioPlayer | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -51,7 +60,7 @@ export default function ChallengeRecordModal({ visible, track, onClose }: Props)
       setError(null);
     } else {
       cleanupRecording();
-      playbackRef.current?.unloadAsync().catch(() => {});
+      releasePlayer(playbackRef.current);
       playbackRef.current = null;
     }
   }, [visible]);
@@ -62,25 +71,27 @@ export default function ChallengeRecordModal({ visible, track, onClose }: Props)
 
   const cleanupRecording = async () => {
     stopTimer();
-    if (recRef.current) {
-      try { await recRef.current.stopAndUnloadAsync(); } catch {}
-      recRef.current = null;
+    if (isRecordingRef.current) {
+      isRecordingRef.current = false;
+      try { await recorder.stop(); } catch {}
+      await applyPlaybackAudioMode();
     }
   };
 
   const startRecording = async () => {
     setError(null);
-    const { granted } = await Audio.requestPermissionsAsync();
+    const { granted } = await requestRecordingPermissionsAsync();
     if (!granted) {
-      setError('Microphone permission is required.');
+      setError(i18n.t('challenge.micPermission'));
       return;
     }
     try {
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      recRef.current = recording;
+      // A playing song would bleed into the microphone.
+      await pauseTrack();
+      await applyRecordingAudioMode();
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      isRecordingRef.current = true;
       setStage('recording');
       setElapsed(0);
       timerRef.current = setInterval(() => {
@@ -91,21 +102,24 @@ export default function ChallengeRecordModal({ visible, track, onClose }: Props)
         });
       }, 1000);
     } catch {
-      setError('Could not start recording. Please try again.');
+      setError(i18n.t('challenge.startFailed'));
+      await applyPlaybackAudioMode();
     }
   };
 
   const handleStop = async () => {
     stopTimer();
-    if (!recRef.current) return;
+    if (!isRecordingRef.current) return;
+    isRecordingRef.current = false;
     try {
-      await recRef.current.stopAndUnloadAsync();
-      const recordedUri = recRef.current.getURI();
-      recRef.current = null;
+      await recorder.stop();
+      const recordedUri = recorder.uri;
       if (recordedUri) { setUri(recordedUri); setStage('recorded'); }
     } catch {
-      setError('Recording failed. Please try again.');
+      setError(i18n.t('challenge.recordFailed'));
       setStage('idle');
+    } finally {
+      await applyPlaybackAudioMode();
     }
   };
 
@@ -113,27 +127,26 @@ export default function ChallengeRecordModal({ visible, track, onClose }: Props)
     if (!uri) return;
     try {
       if (isPlayingBack) {
-        await playbackRef.current?.pauseAsync();
+        playbackRef.current?.pause();
         setIsPlayingBack(false);
       } else {
         if (!playbackRef.current) {
-          await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
-          const { sound } = await Audio.Sound.createAsync({ uri });
-          playbackRef.current = sound;
-          sound.setOnPlaybackStatusUpdate(s => {
-            if (s.isLoaded && s.didJustFinish) setIsPlayingBack(false);
+          playbackRef.current = createPreviewPlayer(uri, (s) => {
+            if (s.didJustFinish) setIsPlayingBack(false);
           });
+          await waitUntilLoaded(playbackRef.current);
         }
-        await playbackRef.current.playFromPositionAsync(0);
+        await playbackRef.current.seekTo(0);
+        playbackRef.current.play();
         setIsPlayingBack(true);
       }
     } catch {
-      setError('Could not play recording.');
+      setError(i18n.t('challenge.playFailed'));
     }
   };
 
   const handleReRecord = async () => {
-    await playbackRef.current?.unloadAsync().catch(() => {});
+    releasePlayer(playbackRef.current);
     playbackRef.current = null;
     setIsPlayingBack(false);
     setUri(null);
@@ -156,7 +169,7 @@ export default function ChallengeRecordModal({ visible, track, onClose }: Props)
       setStage('done');
       setTimeout(onClose, 2000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Upload failed. Please try again.');
+      setError(e instanceof Error ? e.message : i18n.t('challenge.uploadFailed'));
       setStage('recorded');
     }
   };
@@ -180,7 +193,7 @@ export default function ChallengeRecordModal({ visible, track, onClose }: Props)
                 </View>
               )}
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={s.challengeLabel}>Challenge</Text>
+                <Text style={s.challengeLabel}>{i18n.t('challenge.label')}</Text>
                 <Text style={s.trackTitle} numberOfLines={1}>{track.title}</Text>
                 {track.artist && <Text style={s.trackArtist} numberOfLines={1}>{track.artist}</Text>}
               </View>
@@ -200,7 +213,7 @@ export default function ChallengeRecordModal({ visible, track, onClose }: Props)
                 <TouchableOpacity onPress={startRecording} style={s.recordBtn} activeOpacity={0.8}>
                   <Mic size={38} color="#fff" />
                 </TouchableOpacity>
-                <Text style={s.hint}>Tap to start</Text>
+                <Text style={s.hint}>{i18n.t('challenge.tapStart')}</Text>
               </>
             )}
 
@@ -217,7 +230,7 @@ export default function ChallengeRecordModal({ visible, track, onClose }: Props)
                 <TouchableOpacity onPress={handleStop} style={s.stopBtn} activeOpacity={0.8}>
                   <Square size={28} color="#fff" fill="#fff" />
                 </TouchableOpacity>
-                <Text style={s.hint}>Tap to stop</Text>
+                <Text style={s.hint}>{i18n.t('challenge.tapStop')}</Text>
               </>
             )}
 
@@ -231,11 +244,11 @@ export default function ChallengeRecordModal({ visible, track, onClose }: Props)
                 <View style={s.actionRow}>
                   <TouchableOpacity onPress={handleReRecord} style={s.secondaryBtn} activeOpacity={0.8}>
                     <RotateCcw size={16} color="#a78bfa" />
-                    <Text style={s.secondaryBtnText}>Re-record</Text>
+                    <Text style={s.secondaryBtnText}>{i18n.t('challenge.rerecord')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={handleSubmit} style={s.submitBtn} activeOpacity={0.8}>
                     <Send size={16} color="#fff" />
-                    <Text style={s.submitBtnText}>Submit</Text>
+                    <Text style={s.submitBtnText}>{i18n.t('challenge.submit')}</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -243,16 +256,16 @@ export default function ChallengeRecordModal({ visible, track, onClose }: Props)
 
             {stage === 'uploading' && (
               <>
-                <ActivityIndicator size="large" color="#7c3aed" />
-                <Text style={s.uploadingText}>Uploading your challenge...</Text>
+                <ActivityIndicator size="large" color="#000000" />
+                <Text style={s.uploadingText}>{i18n.t('challenge.uploading')}</Text>
               </>
             )}
 
             {stage === 'done' && (
               <>
                 <Text style={s.doneIcon}>🎤</Text>
-                <Text style={s.doneText}>Challenge submitted!</Text>
-                <Text style={s.doneSubText}>Your response is now live.</Text>
+                <Text style={s.doneText}>{i18n.t('challenge.submitted')}</Text>
+                <Text style={s.doneSubText}>{i18n.t('challenge.live')}</Text>
               </>
             )}
           </View>
@@ -454,7 +467,7 @@ const s = StyleSheet.create({
     fontWeight: '600',
   },
   uploadingText: {
-    color: 'rgba(255,255,255,0.5)',
+    color: '#000000',
     fontSize: 13,
     marginTop: 8,
   },

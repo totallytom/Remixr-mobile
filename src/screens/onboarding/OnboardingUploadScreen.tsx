@@ -15,14 +15,29 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import { Audio } from 'expo-av';
 import {
-  UploadCloud, Music2, X, Globe, ArrowRight,
-  Disc3, Mic2, Loader2, Image as ImageIcon,
+  UploadCloud, Music2, X, Globe, ArrowRight, ChevronLeft,
+  Disc3, Mic2, Image as ImageIcon, ShieldCheck,
 } from 'lucide-react-native';
 import { useStore } from '../../store/useStore';
-import { supabase } from '../../services/supabase';
+import { useTranslation } from 'react-i18next';
+import { genreLabel } from '../../utils/genres';
 import { checkCopyright } from '../../services/copyrightService';
+import {
+  ACCEPTED_AUDIO_MIME,
+  MAX_AUDIO_MB,
+  emptyRightsDeclaration,
+  fetchUploadCounts,
+  formatDuration,
+  freePlanLimitError,
+  hasUnlimitedUploads,
+  getAudioDuration,
+  publishRelease,
+  validateRights,
+  type PickedFile,
+  type RightsDeclaration,
+} from '../../services/trackUploadService';
+import RightsOwnershipStep, { DARK_RIGHTS_PALETTE } from '../../components/upload/RightsOwnershipStep';
 import { isMusicianRole } from '../../utils/userRole';
 import type { OnboardingStackParamList } from '../../navigation/OnboardingStack';
 
@@ -31,50 +46,6 @@ const GENRES = [
   'Electronic', 'Pop', 'Rock', 'Hip Hop', 'R&B', 'Jazz', 'Classical',
   'Country', 'Folk', 'Alternative', 'Experimental', 'Reggae', 'Blues',
 ];
-const MAX_MB = 50;
-
-const AUDIO_MIME_TYPES = [
-  'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav',
-  'audio/aiff', 'audio/x-aiff', 'audio/mp4', 'audio/m4a',
-];
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-function audioContentType(name: string, mimeType?: string): string {
-  if (mimeType && mimeType.startsWith('audio/')) return mimeType;
-  const ext = name.split('.').pop()?.toLowerCase();
-  if (ext === 'mp3') return 'audio/mpeg';
-  if (ext === 'wav') return 'audio/wav';
-  if (ext === 'm4a') return 'audio/mp4';
-  if (ext === 'aiff' || ext === 'aif') return 'audio/aiff';
-  return 'audio/mpeg';
-}
-
-function imageContentType(name: string, mimeType?: string): string {
-  if (mimeType?.startsWith('image/')) return mimeType;
-  const ext = name.split('.').pop()?.toLowerCase();
-  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
-  if (ext === 'png') return 'image/png';
-  if (ext === 'webp') return 'image/webp';
-  return 'image/jpeg';
-}
-
-async function getAudioDuration(uri: string): Promise<number> {
-  try {
-    const { sound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: false });
-    const status = await sound.getStatusAsync();
-    await sound.unloadAsync();
-    if (status.isLoaded && status.durationMillis) {
-      return Math.floor(status.durationMillis / 1000);
-    }
-    return 0;
-  } catch {
-    return 0;
-  }
-}
-
-function fmtDuration(s: number) {
-  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
-}
 
 function fileSizeMB(bytes: number) {
   return (bytes / (1024 * 1024)).toFixed(1);
@@ -83,13 +54,12 @@ function fileSizeMB(bytes: number) {
 type ReleaseType = 'single' | 'album';
 
 interface TrackFile {
-  uri: string;
-  name: string;
-  size: number;
-  mimeType?: string;
+  id: string;
+  file: PickedFile;
   title: string;
   duration: number;
   order: number;
+  isrc: string;
 }
 
 type NavProp = NativeStackNavigationProp<OnboardingStackParamList, 'OnboardingUpload'>;
@@ -101,9 +71,9 @@ const FileRow: React.FC<{ track: TrackFile; onRemove: () => void }> = ({ track, 
       <Music2 size={14} color="#a78bfa" />
     </View>
     <View className="flex-1 min-w-0">
-      <Text className="text-sm text-white" numberOfLines={1}>{track.name}</Text>
+      <Text className="text-sm text-white" numberOfLines={1}>{track.file.name}</Text>
       <Text className="text-xs text-white/35">
-        {track.duration ? fmtDuration(track.duration) : '—'} · {fileSizeMB(track.size)} MB
+        {track.duration ? formatDuration(track.duration) : '—'} · {fileSizeMB(track.file.size)} MB
       </Text>
     </View>
     <TouchableOpacity onPress={onRemove} className="p-1">
@@ -115,6 +85,7 @@ const FileRow: React.FC<{ track: TrackFile; onRemove: () => void }> = ({ track, 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 const OnboardingUpload: React.FC = () => {
   const { user, isAuthenticated } = useStore();
+  const { t } = useTranslation();
   const navigation = useNavigation<NavProp>();
 
   useEffect(() => {
@@ -122,6 +93,8 @@ const OnboardingUpload: React.FC = () => {
     if (!isAuthenticated) { navigation.navigate('Onboarding'); return; }
     if (user && !isMusicianRole(user.role)) navigation.navigate('Onboarding');
   }, [isAuthenticated, user, navigation]);
+
+  const [step, setStep] = useState<'details' | 'rights'>('details');
 
   // ── File state ─────────────────────────────────────────────────────────────
   const [files, setFiles] = useState<TrackFile[]>([]);
@@ -132,11 +105,20 @@ const OnboardingUpload: React.FC = () => {
   const [trackTitle, setTrackTitle] = useState('');
   const [albumTitle, setAlbumTitle] = useState('');
   const [genre, setGenre] = useState('');
-  const [coverUri, setCoverUri] = useState<string | null>(null);
-  const [coverName, setCoverName] = useState<string | null>(null);
-  const [coverMime, setCoverMime] = useState<string | null>(null);
+  const [cover, setCover] = useState<PickedFile | null>(null);
+  const [rights, setRights] = useState<RightsDeclaration>(() =>
+    emptyRightsDeclaration(user?.artistName || user?.username || ''),
+  );
+
+  // Songwriter prefill: user may still be loading on first render.
+  useEffect(() => {
+    const name = user?.artistName || user?.username;
+    if (!name) return;
+    setRights(r => (r.songwriters.length === 1 && !r.songwriters[0] ? { ...r, songwriters: [name] } : r));
+  }, [user?.artistName, user?.username]);
 
   // ── Upload state ───────────────────────────────────────────────────────────
+  const [isCheckingDetails, setIsCheckingDetails] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
@@ -163,24 +145,23 @@ const OnboardingUpload: React.FC = () => {
     setDropError('');
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: AUDIO_MIME_TYPES,
+        type: ACCEPTED_AUDIO_MIME,
         multiple: true,
         copyToCacheDirectory: true,
       });
       if (result.canceled) return;
 
       const picked = result.assets;
-      const tooBig = picked.filter(a => a.size != null && a.size > MAX_MB * 1024 * 1024);
-      if (tooBig.length) { setDropError(`Files must be under ${MAX_MB} MB each.`); return; }
+      const tooBig = picked.filter(a => a.size != null && a.size > MAX_AUDIO_MB * 1024 * 1024);
+      if (tooBig.length) { setDropError(t('onboarding.upload.tooBig', { mb: MAX_AUDIO_MB })); return; }
 
       const newEntries: TrackFile[] = picked.map((a, i) => ({
-        uri: a.uri,
-        name: a.name,
-        size: a.size ?? 0,
-        mimeType: a.mimeType,
+        id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`,
+        file: { uri: a.uri, name: a.name, size: a.size ?? 0, mimeType: a.mimeType },
         title: a.name.replace(/\.[^.]+$/, ''),
         duration: 0,
         order: files.length + i + 1,
+        isrc: '',
       }));
 
       if (files.length === 0 && newEntries.length === 1) {
@@ -191,17 +172,17 @@ const OnboardingUpload: React.FC = () => {
 
       // Load durations in background
       newEntries.forEach(async entry => {
-        const dur = await getAudioDuration(entry.uri);
-        setFiles(prev => prev.map(t => t.uri === entry.uri ? { ...t, duration: dur } : t));
+        const dur = await getAudioDuration(entry.file.uri);
+        setFiles(prev => prev.map(t => (t.id === entry.id ? { ...t, duration: dur } : t)));
       });
-    } catch (err) {
-      setDropError('Could not open file picker.');
+    } catch {
+      setDropError(t('onboarding.upload.pickerFailed'));
     }
   }, [files.length]);
 
-  const removeFile = (i: number) => {
+  const removeFile = (id: string) => {
     setFiles(prev => {
-      const next = prev.filter((_, idx) => idx !== i).map((t, idx) => ({ ...t, order: idx + 1 }));
+      const next = prev.filter(t => t.id !== id).map((t, idx) => ({ ...t, order: idx + 1 }));
       if (next.length === 0) { setTrackTitle(''); setAlbumTitle(''); }
       if (next.length <= 1) setReleaseType('single');
       return next;
@@ -213,7 +194,7 @@ const OnboardingUpload: React.FC = () => {
     setDropError('');
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission required', 'Please allow access to your photo library.');
+      Alert.alert(t('onboarding.upload.permissionTitle'), t('onboarding.upload.permissionPhotos'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -224,138 +205,83 @@ const OnboardingUpload: React.FC = () => {
     });
     if (result.canceled) return;
     const asset = result.assets[0];
-    setCoverUri(asset.uri);
-    setCoverName(asset.fileName ?? `cover_${Date.now()}.jpg`);
-    setCoverMime(asset.mimeType ?? 'image/jpeg');
+    setCover({
+      uri: asset.uri,
+      name: asset.fileName ?? `cover_${Date.now()}.jpg`,
+      size: asset.fileSize ?? 0,
+      mimeType: asset.mimeType ?? 'image/jpeg',
+    });
   };
 
-  // ── Upload ─────────────────────────────────────────────────────────────────
-  const canSubmit = hasFiles && trackTitle.trim() && genre && (!isAlbumMode || albumTitle.trim());
+  // ── Step 1 → 2 ─────────────────────────────────────────────────────────────
+  const canContinue = hasFiles && genre && (isAlbumMode ? albumTitle.trim() : trackTitle.trim());
 
-  const uploadBlob = async (uri: string, storagePath: string, contentType: string) => {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    const { data, error } = await supabase.storage
-      .from('music-files')
-      .upload(storagePath, blob, { contentType, upsert: false });
-    if (error || !data?.path) throw new Error(error?.message || 'Upload failed');
-    return supabase.storage.from('music-files').getPublicUrl(data.path).data.publicUrl;
+  // In album mode each file keeps its own title; a single uses the title field.
+  const releaseTracks = () =>
+    isAlbumMode ? files : [{ ...files[0], title: trackTitle.trim() }];
+
+  const continueToRights = async () => {
+    if (!user || !canContinue) return;
+    setUploadError('');
+    if (isAlbumMode && !cover) {
+      setUploadError(t('onboarding.upload.coverRequired'));
+      return;
+    }
+    const artist = user.artistName || user.username;
+    setIsCheckingDetails(true);
+    try {
+      if (!hasUnlimitedUploads(user.subscriptionTier)) {
+        const counts = await fetchUploadCounts(user.id).catch(() => null);
+        if (!counts) {
+          setUploadError(t('onboarding.upload.limitsCheckFailed'));
+          return;
+        }
+        const limitError = freePlanLimitError(counts, releaseTracks().length, isAlbumMode);
+        if (limitError) {
+          setUploadError(limitError);
+          return;
+        }
+      }
+      for (const track of releaseTracks()) {
+        const result = await checkCopyright({ title: track.title, artist });
+        if (result.blocked) {
+          setUploadError(result.reason || t('onboarding.upload.blocked', { title: track.title }));
+          return;
+        }
+      }
+    } finally {
+      setIsCheckingDetails(false);
+    }
+    setStep('rights');
   };
 
+  // ── Publish ────────────────────────────────────────────────────────────────
   const handleUpload = async () => {
-    if (!user || !canSubmit) return;
+    if (!user || !canContinue) return;
+    const tracks = releaseTracks();
+    const rightsError = validateRights(rights, tracks);
+    if (rightsError) { setUploadError(rightsError); return; }
+
     setIsUploading(true);
     setUploadProgress(0);
     setUploadError('');
-
-    const tick = setInterval(
-      () => setUploadProgress(p => (p >= 85 ? 85 : p + 8)),
-      300,
-    );
-
     try {
-      if (releaseType === 'single') {
-        const track = files[0];
-
-        try {
-          const r = await checkCopyright(
-            { name: track.name, size: track.size } as File,
-            { title: trackTitle, artist: user.artistName || user.username },
-          );
-          if (r.blocked) {
-            Alert.alert('Copyright', r.reason || 'Blocked by copyright policy.');
-            return;
-          }
-        } catch { /* proceed if check unavailable */ }
-
-        const sanitized = track.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const audioPath = `audio-files/${user.id}/${Date.now()}-${sanitized}`;
-        const audioUrl = await uploadBlob(track.uri, audioPath, audioContentType(track.name, track.mimeType));
-
-        let coverUrl = 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=400&fit=crop';
-        if (coverUri && coverName) {
-          const coverSanitized = coverName.replace(/[^a-zA-Z0-9.-]/g, '_');
-          const coverPath = `playlist-covers/${user.id}/${Date.now()}-${coverSanitized}`;
-          coverUrl = await uploadBlob(coverUri, coverPath, imageContentType(coverName, coverMime ?? undefined));
-        }
-
-        const { error: trackErr } = await supabase.from('tracks').insert({
-          title: trackTitle.trim(),
-          artist: user.artistName || user.username,
-          duration: track.duration,
-          cover: coverUrl,
-          audio_url: audioUrl,
-          genre,
-          user_id: user.id,
-          preview_start_sec: 0,
-          preview_duration_sec: 20,
-        });
-        if (trackErr) throw new Error(trackErr.message);
-
-      } else {
-        if (!coverUri || !coverName) {
-          setUploadError('A cover image is required for albums.');
-          clearInterval(tick);
-          setIsUploading(false);
-          return;
-        }
-
-        const coverSanitized = coverName.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const coverPath = `playlist-covers/${user.id}/${Date.now()}-${coverSanitized}`;
-        const coverUrl = await uploadBlob(coverUri, coverPath, imageContentType(coverName, coverMime ?? undefined));
-
-        const uploadedTracks: { title: string; duration: number; audio_url: string; order: number }[] = [];
-        for (let i = 0; i < files.length; i++) {
-          const t = files[i];
-          const san = t.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-          const p = `audio-files/${user.id}/${Date.now()}-${i}-${san}`;
-          const audioUrl = await uploadBlob(t.uri, p, audioContentType(t.name, t.mimeType));
-          uploadedTracks.push({ title: t.title, duration: t.duration, audio_url: audioUrl, order: t.order });
-          setUploadProgress(20 + ((i + 1) / files.length) * 55);
-        }
-
-        const { data: albumData, error: albumErr } = await supabase
-          .from('albums')
-          .insert({
-            title: albumTitle.trim(),
-            artist: user.artistName || user.username,
-            cover: coverUrl,
-            genre,
-            user_id: user.id,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .select()
-          .single();
-        if (albumErr) throw new Error(albumErr.message);
-
-        const { error: tracksErr } = await supabase.from('tracks').insert(
-          uploadedTracks.map(t => ({
-            title: t.title,
-            artist: user.artistName || user.username,
-            album: albumTitle.trim(),
-            duration: t.duration,
-            cover: coverUrl,
-            audio_url: t.audio_url,
-            genre,
-            user_id: user.id,
-            album_id: albumData.id,
-            preview_start_sec: 0,
-            preview_duration_sec: 20,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })),
-        );
-        if (tracksErr) throw new Error(tracksErr.message);
+      const { status } = await publishRelease({
+        userId: user.id,
+        artist: user.artistName || user.username,
+        genre,
+        cover,
+        album: isAlbumMode ? { title: albumTitle.trim() } : null,
+        tracks,
+        rights,
+        onProgress: setUploadProgress,
+      });
+      if (status === 'pending_review') {
+        Alert.alert(t('onboarding.upload.receivedTitle'), t('onboarding.upload.receivedBody'));
       }
-
-      clearInterval(tick);
-      setUploadProgress(100);
       navigation.navigate('OnboardingLive');
-
     } catch (err) {
-      clearInterval(tick);
-      setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
+      setUploadError(err instanceof Error ? err.message : t('onboarding.upload.failed'));
     } finally {
       setIsUploading(false);
     }
@@ -366,191 +292,57 @@ const OnboardingUpload: React.FC = () => {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
       <View className="flex-1 bg-dark-900 items-center justify-center">
-        <ActivityIndicator size="large" color="#a78bfa" />
-        <Text className="text-white/40 text-sm mt-3">Loading…</Text>
+        <ActivityIndicator size="large" color="#000000" />
+        <Text className="text-black text-sm mt-3">{t('common.loading')}</Text>
       </View>
       </SafeAreaView>
     );
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
-    <ScrollView
-      className="flex-1 bg-dark-900"
-      contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/* Header */}
-      <View className="items-center mb-10 mt-4">
-        <View className="flex-row items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 mb-4">
-          <Mic2 size={12} color="#c4b5fd" />
-          <Text className="text-xs text-violet-300 font-medium">Step 3 of 3 · Release your first track</Text>
-        </View>
-        <Text className="text-2xl font-bold text-white mb-2">Upload your music</Text>
-        <Text className="text-sm text-white/40">Pick a file, fill in the details, hit publish.</Text>
-      </View>
+  const errorText = uploadError ? <Text className="text-sm text-red-400">{uploadError}</Text> : null;
 
-      {/* Pick audio button / file list */}
-      {!hasFiles ? (
+  // ── Render: Rights & Ownership step ────────────────────────────────────────
+  if (step === 'rights') {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
+      <ScrollView
+        className="flex-1 bg-dark-900"
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+      >
         <TouchableOpacity
-          onPress={pickAudioFiles}
-          className="rounded-2xl border-2 border-dashed border-dark-600 bg-dark-800/30 p-12 items-center gap-4"
-          activeOpacity={0.7}
+          onPress={() => { setUploadError(''); setStep('details'); }}
+          disabled={isUploading}
+          className="flex-row items-center gap-1 self-start mt-2 mb-6"
         >
-          <View className="w-16 h-16 rounded-2xl bg-dark-700 items-center justify-center">
-            <UploadCloud size={28} color="#6b7280" />
-          </View>
-          <View className="items-center">
-            <Text className="font-semibold text-white mb-1">Tap to pick your track</Text>
-            <Text className="text-sm text-white/40">MP3, WAV, AIFF · Max {MAX_MB} MB</Text>
-          </View>
-          <View className="px-3 py-1.5 rounded-full bg-dark-700">
-            <Text className="text-xs text-white/50">Browse files</Text>
-          </View>
+          <ChevronLeft size={18} color="rgba(255,255,255,0.5)" />
+          <Text className="text-sm text-white/50">{t('onboarding.upload.backToDetails')}</Text>
         </TouchableOpacity>
-      ) : (
-        <View className="rounded-2xl border-2 border-dark-600 bg-dark-800/50 p-4 gap-2">
-          {files.map((t, i) => (
-            <FileRow key={`${t.uri}-${i}`} track={t} onRemove={() => removeFile(i)} />
-          ))}
-          <TouchableOpacity
-            onPress={pickAudioFiles}
-            className="w-full py-2 items-center justify-center flex-row gap-1.5"
-            activeOpacity={0.6}
-          >
-            <UploadCloud size={12} color="#6b7280" />
-            <Text className="text-xs text-white/30">Add more tracks</Text>
-          </TouchableOpacity>
+
+        <View className="items-center mb-8">
+          <View className="flex-row items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 mb-4">
+            <ShieldCheck size={12} color="#c4b5fd" />
+            <Text className="text-xs text-violet-300 font-medium">{t('onboarding.upload.rightsStep')}</Text>
+          </View>
+          <Text className="text-2xl font-bold text-white mb-2">{t('onboarding.upload.rightsTitle')}</Text>
+          <Text className="text-sm text-white/40 text-center">{t('onboarding.upload.rightsSubtitle')}</Text>
         </View>
-      )}
 
-      {dropError ? (
-        <Text className="text-sm text-red-400 px-1 mt-2">{dropError}</Text>
-      ) : null}
+        <View className="rounded-2xl border border-white/10 bg-white/5 p-5 gap-5">
+          <RightsOwnershipStep
+            value={rights}
+            onChange={setRights}
+            isrcTracks={releaseTracks().map(t => ({ id: t.id, title: t.title, isrc: t.isrc }))}
+            onIsrcChange={(id, isrc) => setFiles(prev => prev.map(t => (t.id === id ? { ...t, isrc } : t)))}
+            palette={DARK_RIGHTS_PALETTE}
+          />
 
-      {/* Metadata — visible when files are picked */}
-      {hasFiles && (
-        <View className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-6 gap-5">
+          {errorText}
 
-          {/* Release type */}
-          <View>
-            <Text className="text-sm font-medium text-white mb-3">Release type</Text>
-            <View className="flex-row gap-2">
-              {(['single', 'album'] as ReleaseType[]).map(type => (
-                <TouchableOpacity
-                  key={type}
-                  onPress={() => setReleaseType(type)}
-                  className={`flex-1 flex-row items-center justify-center gap-2 py-2.5 rounded-xl border-2 ${
-                    releaseType === type
-                      ? 'border-primary-500 bg-primary-500/10'
-                      : 'border-dark-600'
-                  }`}
-                  activeOpacity={0.7}
-                >
-                  {type === 'single'
-                    ? <Music2 size={15} color={releaseType === type ? '#fff' : '#6b7280'} />
-                    : <Disc3 size={15} color={releaseType === type ? '#fff' : '#6b7280'} />
-                  }
-                  <Text className={`text-sm font-medium ${releaseType === type ? 'text-white' : 'text-dark-400'}`}>
-                    {type === 'single' ? 'Single' : 'Album'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Track / album title */}
-          <View>
-            <Text className="text-sm font-medium text-white mb-2">
-              {isAlbumMode ? 'Album title' : 'Track title'}
-              <Text className="text-red-400"> *</Text>
-            </Text>
-            <TextInput
-              value={isAlbumMode ? albumTitle : trackTitle}
-              onChangeText={isAlbumMode ? setAlbumTitle : setTrackTitle}
-              placeholder={isAlbumMode ? 'Album name' : 'Track name'}
-              placeholderTextColor="rgba(255,255,255,0.25)"
-              maxLength={100}
-              className="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-lg text-white"
-            />
-          </View>
-
-          {/* Genre */}
-          <View>
-            <Text className="text-sm font-medium text-white mb-2">
-              Genre <Text className="text-red-400">*</Text>
-            </Text>
-            <View className="flex-row flex-wrap gap-2">
-              {GENRES.map(g => (
-                <TouchableOpacity
-                  key={g}
-                  onPress={() => setGenre(g)}
-                  className={`px-3 py-1.5 rounded-full border ${
-                    genre === g
-                      ? 'border-primary-500 bg-primary-500/15'
-                      : 'border-dark-600'
-                  }`}
-                  activeOpacity={0.7}
-                >
-                  <Text className={`text-xs ${genre === g ? 'text-primary-300' : 'text-dark-400'}`}>
-                    {g}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Cover art */}
-          <View>
-            <Text className="text-sm font-medium text-white mb-2">
-              Cover art
-              {isAlbumMode
-                ? <Text className="text-red-400"> *</Text>
-                : <Text className="text-xs font-normal text-white/30"> · optional</Text>
-              }
-            </Text>
-            {!coverUri ? (
-              <TouchableOpacity
-                onPress={pickCoverImage}
-                className="w-full flex-row items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-dark-600"
-                activeOpacity={0.7}
-              >
-                <ImageIcon size={16} color="rgba(255,255,255,0.4)" />
-                <Text className="text-sm text-white/40">
-                  {isAlbumMode ? 'Add album cover' : 'Add cover art'}
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <View className="flex-row items-center gap-3">
-                <Image
-                  source={{ uri: coverUri }}
-                  className="w-14 h-14 rounded-lg"
-                  resizeMode="cover"
-                />
-                <View className="flex-1 min-w-0">
-                  <Text className="text-sm text-white" numberOfLines={1}>{coverName}</Text>
-                  <TouchableOpacity
-                    onPress={() => { setCoverUri(null); setCoverName(null); setCoverMime(null); }}
-                    activeOpacity={0.7}
-                  >
-                    <Text className="text-xs text-red-400 mt-0.5">Remove</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          </View>
-
-          {/* Upload error */}
-          {uploadError ? (
-            <Text className="text-sm text-red-400">{uploadError}</Text>
-          ) : null}
-
-          {/* Progress bar */}
           {isUploading && (
             <View className="gap-1.5">
               <View className="flex-row justify-between">
-                <Text className="text-xs text-white/40">Uploading…</Text>
+                <Text className="text-xs text-white/40">{t('onboarding.upload.uploading')}</Text>
                 <Text className="text-xs text-white/40">{uploadProgress}%</Text>
               </View>
               <View className="h-1.5 bg-dark-700 rounded-full overflow-hidden">
@@ -569,36 +361,247 @@ const OnboardingUpload: React.FC = () => {
             </View>
           )}
 
-          {/* Public note + submit */}
           <View className="pt-2 gap-3">
             <View className="flex-row items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-500/10 border border-emerald-500/15">
               <Globe size={13} color="#34d399" />
               <Text className="text-xs text-emerald-300/80 font-medium">
-                Your track is public immediately.
+                {rights.ownershipType && rights.ownershipType !== 'original'
+                  ? t('onboarding.upload.publicAfterReview')
+                  : t('onboarding.upload.publicNow')}
               </Text>
             </View>
 
             <TouchableOpacity
               onPress={handleUpload}
-              disabled={isUploading || !canSubmit}
+              disabled={isUploading || rights.samplesStatus === 'uncleared'}
               className={`w-full flex-row items-center justify-center gap-2 py-3.5 rounded-xl bg-primary-600 ${
-                isUploading || !canSubmit ? 'opacity-40' : ''
+                isUploading || rights.samplesStatus === 'uncleared' ? 'opacity-40' : ''
               }`}
               activeOpacity={0.85}
             >
               {isUploading ? (
                 <>
-                  <ActivityIndicator size="small" color="#fff" />
-                  <Text className="text-white font-semibold">Publishing…</Text>
+                  <ActivityIndicator size="small" color="#000000" />
+                  <Text className="text-white font-semibold">{t('onboarding.upload.uploading')}</Text>
                 </>
               ) : (
                 <>
-                  <Text className="text-white font-semibold">Publish</Text>
+                  <Text className="text-white font-semibold">{t('onboarding.upload.publish')}</Text>
                   <ArrowRight size={16} color="#fff" />
                 </>
               )}
             </TouchableOpacity>
           </View>
+        </View>
+      </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Render: files + details step ───────────────────────────────────────────
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
+    <ScrollView
+      className="flex-1 bg-dark-900"
+      contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+      keyboardShouldPersistTaps="handled"
+    >
+      {/* Header */}
+      <View className="items-center mb-10 mt-4">
+        <View className="flex-row items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 mb-4">
+          <Mic2 size={12} color="#c4b5fd" />
+          <Text className="text-xs text-violet-300 font-medium">{t('onboarding.upload.step')}</Text>
+        </View>
+        <Text className="text-2xl font-bold text-white mb-2">{t('onboarding.upload.title')}</Text>
+        <Text className="text-sm text-white/40">{t('onboarding.upload.subtitle')}</Text>
+      </View>
+
+      {/* File picker / file list */}
+      {!hasFiles ? (
+        <TouchableOpacity
+          onPress={pickAudioFiles}
+          className="rounded-2xl border-2 border-dashed border-dark-600 bg-dark-800/30 p-10 items-center gap-4"
+          activeOpacity={0.7}
+        >
+          <View className="w-16 h-16 rounded-2xl bg-dark-700 items-center justify-center">
+            <UploadCloud size={28} color="#6b7280" />
+          </View>
+          <View className="items-center">
+            <Text className="font-semibold text-white mb-1">{t('onboarding.upload.selectFiles')}</Text>
+            <Text className="text-sm text-white/40">{t('onboarding.upload.formats', { mb: MAX_AUDIO_MB })}</Text>
+            <Text className="text-xs text-white/25 mt-2">{t('onboarding.upload.singleVsAlbum')}</Text>
+          </View>
+        </TouchableOpacity>
+      ) : (
+        <View className="rounded-2xl border-2 border-dark-600 bg-dark-800/50 p-4 gap-2">
+          {files.map(t => (
+            <FileRow key={t.id} track={t} onRemove={() => removeFile(t.id)} />
+          ))}
+          <TouchableOpacity
+            onPress={pickAudioFiles}
+            className="flex-row items-center justify-center gap-2 mt-1 py-2 rounded-lg border border-dashed border-dark-600"
+            activeOpacity={0.7}
+          >
+            <UploadCloud size={14} color="#a78bfa" />
+            <Text className="text-sm text-violet-300">{t('onboarding.upload.addMoreFiles')}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {dropError ? (
+        <Text className="text-sm text-red-400 px-1 mt-2">{dropError}</Text>
+      ) : null}
+
+      {/* Metadata — visible once files are picked */}
+      {hasFiles && (
+        <View className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-6 gap-5">
+
+          {/* Release type */}
+          <View>
+            <Text className="text-sm font-medium text-white mb-3">{t('onboarding.upload.releaseType')}</Text>
+            <View className="flex-row gap-2">
+              {(['single', 'album'] as ReleaseType[]).map(type => {
+                const disabled = type === 'single' && files.length > 1;
+                return (
+                  <TouchableOpacity
+                    key={type}
+                    onPress={() => setReleaseType(type)}
+                    disabled={disabled}
+                    className={`flex-1 flex-row items-center justify-center gap-2 py-2.5 rounded-xl border-2 ${
+                      releaseType === type
+                        ? 'border-primary-500 bg-primary-500/10'
+                        : 'border-dark-600'
+                    } ${disabled ? 'opacity-40' : ''}`}
+                    activeOpacity={0.7}
+                  >
+                    {type === 'single'
+                      ? <Music2 size={15} color={releaseType === type ? '#fff' : '#6b7280'} />
+                      : <Disc3 size={15} color={releaseType === type ? '#fff' : '#6b7280'} />
+                    }
+                    <Text className={`text-sm font-medium ${releaseType === type ? 'text-white' : 'text-dark-400'}`}>
+                      {type === 'single' ? t('common.single') : t('common.album')}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Track / album title */}
+          <View>
+            <Text className="text-sm font-medium text-white mb-2">
+              {isAlbumMode ? t('onboarding.upload.albumTitle') : t('onboarding.upload.trackTitle')}
+              <Text className="text-red-400"> *</Text>
+            </Text>
+            <TextInput
+              value={isAlbumMode ? albumTitle : trackTitle}
+              onChangeText={isAlbumMode ? setAlbumTitle : setTrackTitle}
+              placeholder={isAlbumMode ? t('onboarding.upload.albumName') : t('onboarding.upload.trackName')}
+              placeholderTextColor="rgba(255,255,255,0.25)"
+              maxLength={100}
+              className="w-full px-4 py-3 bg-dark-700 border border-dark-600 rounded-lg text-white"
+            />
+          </View>
+
+          {/* Per-track titles for albums */}
+          {isAlbumMode && (
+            <View>
+              <Text className="text-sm font-medium text-white mb-2">{t('onboarding.upload.trackTitles')}</Text>
+              <View className="gap-2">
+                {files.map(track => (
+                  <View key={track.id} className="flex-row items-center gap-2">
+                    <Text className="w-5 text-xs text-white/35 text-right">{track.order}</Text>
+                    <TextInput
+                      value={track.title}
+                      onChangeText={v => setFiles(prev => prev.map(f => (f.id === track.id ? { ...f, title: v } : f)))}
+                      placeholder={t('onboarding.upload.trackTitle')}
+                      placeholderTextColor="rgba(255,255,255,0.25)"
+                      maxLength={100}
+                      className="flex-1 px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-white text-sm"
+                    />
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* Genre */}
+          <View>
+            <Text className="text-sm font-medium text-white mb-2">
+              {t('onboarding.upload.genre')} <Text className="text-red-400">*</Text>
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
+              {GENRES.map(g => (
+                <TouchableOpacity
+                  key={g}
+                  onPress={() => setGenre(g)}
+                  className={`px-3 py-1.5 rounded-full border ${
+                    genre === g
+                      ? 'border-primary-500 bg-primary-500/15'
+                      : 'border-dark-600'
+                  }`}
+                  activeOpacity={0.7}
+                >
+                  <Text className={`text-xs ${genre === g ? 'text-primary-300' : 'text-dark-400'}`}>
+                    {genreLabel(g)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Cover art */}
+          <View>
+            <Text className="text-sm font-medium text-white mb-2">
+              {t('onboarding.upload.coverArt')}
+              {isAlbumMode
+                ? <Text className="text-red-400"> *</Text>
+                : <Text className="text-xs font-normal text-white/30"> · {t('common.optional')}</Text>
+              }
+            </Text>
+            {!cover ? (
+              <TouchableOpacity
+                onPress={pickCoverImage}
+                className="w-full flex-row items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-dark-600"
+                activeOpacity={0.7}
+              >
+                <ImageIcon size={16} color="rgba(255,255,255,0.4)" />
+                <Text className="text-sm text-white/40">
+                  {isAlbumMode ? t('onboarding.upload.addAlbumCover') : t('onboarding.upload.addCoverArt')}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View className="flex-row items-center gap-3">
+                <Image source={{ uri: cover.uri }} className="w-14 h-14 rounded-lg" resizeMode="cover" />
+                <View className="flex-1 min-w-0">
+                  <Text className="text-sm text-white" numberOfLines={1}>{cover.name}</Text>
+                  <TouchableOpacity onPress={() => setCover(null)} activeOpacity={0.7}>
+                    <Text className="text-xs text-red-400 mt-0.5">{t('common.remove')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+
+          {errorText}
+
+          <TouchableOpacity
+            onPress={continueToRights}
+            disabled={isCheckingDetails || !canContinue}
+            className={`w-full flex-row items-center justify-center gap-2 py-3.5 rounded-xl bg-primary-600 ${
+              isCheckingDetails || !canContinue ? 'opacity-40' : ''
+            }`}
+            activeOpacity={0.85}
+          >
+            {isCheckingDetails ? (
+              <ActivityIndicator size="small" color="#000000" />
+            ) : (
+              <>
+                <Text className="text-white font-semibold">{t('common.continue')}</Text>
+                <ArrowRight size={16} color="#fff" />
+              </>
+            )}
+          </TouchableOpacity>
         </View>
       )}
 
@@ -610,7 +613,7 @@ const OnboardingUpload: React.FC = () => {
           activeOpacity={0.6}
         >
           <Text className="text-xs text-white/20 underline">
-            Skip for now — go to my profile
+            {t('onboarding.upload.skip')}
           </Text>
         </TouchableOpacity>
       )}

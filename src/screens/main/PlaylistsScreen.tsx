@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import PagerHeader from '../../components/layout/PagerHeader';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '../../theme'
 import {
   View,
-  Text,
+  Text as RNText,
   ScrollView,
   TouchableOpacity,
   TextInput,
@@ -12,7 +13,13 @@ import {
   ActivityIndicator,
   Modal,
   Alert,
+  type TextProps,
 } from 'react-native';
+import { FONTS } from '../../utils/fonts';
+
+const Text = ({ style, ...props }: TextProps) => (
+  <RNText style={[{ fontFamily: FONTS.body }, style]} {...props} />
+);
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
@@ -34,10 +41,13 @@ import PlaylistCard from '../../components/music/PlaylistCard';
 import type { Playlist, Track } from '../../store/useStore';
 import { MusicService } from '../../services/musicService';
 import type { PlaylistsStackParamList } from '../../navigation/stacks/PlaylistsStack';
+import { requireAuth } from '../../components/auth/GuestPrompt';
+import { useTranslation } from 'react-i18next';
 
 type PlaylistsNavProp = NativeStackNavigationProp<PlaylistsStackParamList, 'Playlists'>;
 
 const Playlists: React.FC = () => {
+  const { t } = useTranslation();
   const {
     user,
     playlists,
@@ -142,7 +152,7 @@ const Playlists: React.FC = () => {
       setShowCreateModal(false);
     } catch (error) {
       console.error('Failed to create playlist:', error);
-      Alert.alert('Error', 'Failed to create playlist. Please try again.');
+      Alert.alert(t('common.error'), t('playlists.createFailed'));
     } finally {
       setIsCreating(false);
     }
@@ -156,8 +166,8 @@ const Playlists: React.FC = () => {
       setPlaylists(playlists.filter(p => p.id !== playlistId));
     } catch (error) {
       console.error('Failed to delete playlist:', error);
-      const msg = error instanceof Error ? error.message : 'Failed to delete playlist. Please try again.';
-      Alert.alert('Error', msg);
+      const msg = error instanceof Error ? error.message : t('playlists.deleteFailed');
+      Alert.alert(t('common.error'), msg);
     }
   };
 
@@ -169,7 +179,7 @@ const Playlists: React.FC = () => {
       await loadPlaylists();
     } catch (error) {
       console.error('Failed to update playlist:', error);
-      Alert.alert('Error', 'Failed to update playlist. Please try again.');
+      Alert.alert(t('common.error'), t('playlists.updateFailed'));
     } finally {
       setIsUpdatingPlaylist(null);
     }
@@ -181,7 +191,7 @@ const Playlists: React.FC = () => {
       setShowAddTrackModal(false);
     } catch (error) {
       console.error('Failed to add track to playlist:', error);
-      Alert.alert('Error', 'Failed to add track to playlist. Please try again.');
+      Alert.alert(t('common.error'), t('playlists.addFailed'));
     }
   };
 
@@ -190,7 +200,7 @@ const Playlists: React.FC = () => {
       await removeTrackFromPlaylist(playlistId, trackId);
     } catch (error) {
       console.error('Failed to remove track from playlist:', error);
-      Alert.alert('Error', 'Failed to remove track from playlist. Please try again.');
+      Alert.alert(t('common.error'), t('playlists.removeFailed'));
     }
   };
 
@@ -228,10 +238,10 @@ const Playlists: React.FC = () => {
         setSelectedInvitation(null);
       }
       await loadPlaylists();
-      Alert.alert('Success', 'Invitation accepted! The playlist is now available in your playlists.');
+      Alert.alert(t('playlists.success'), t('playlists.invitationAccepted'));
     } catch (error) {
       console.error('Failed to accept invitation:', error);
-      Alert.alert('Error', `Failed to accept invitation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      Alert.alert(t('common.error'), t('playlists.acceptFailed', { message: error instanceof Error ? error.message : t('playlists.unknownError') }));
     }
   };
 
@@ -249,7 +259,7 @@ const Playlists: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to decline invitation:', error);
-      Alert.alert('Error', `Failed to decline invitation: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      Alert.alert(t('common.error'), t('playlists.declineFailed', { message: error instanceof Error ? error.message : t('playlists.unknownError') }));
     }
   };
 
@@ -259,46 +269,46 @@ const Playlists: React.FC = () => {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
-      <View className="flex-1 items-center justify-center gap-4">
-        <ActivityIndicator size="large" color="#7c3aed" />
-        <Text className="text-gray-500">Loading playlists...</Text>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.dark900 }} edges={['top']}>
+      <View style={{ flex: 1, backgroundColor: colors.background }} className="items-center justify-center gap-4">
+        <ActivityIndicator size="large" color="#000000" />
+        <Text className="text-black">{t('playlists.loading')}</Text>
       </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
-    <View className="flex-1 bg-dark-900">
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.dark900 }} edges={['top']}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
 
       <PagerHeader />
 
       {/* Header */}
       <View className="px-5 pt-6 pb-4 flex-row items-center justify-between gap-4">
         <View className="flex-1 min-w-0">
-          <Text className="text-2xl font-bold text-white">My Playlists</Text>
-          <Text className="text-gray-500 text-sm mt-0.5">Organize and enjoy your music collections</Text>
+          <Text className="text-2xl font-bold text-black">{t('playlists.title')}</Text>
+          <Text className="text-gray-500 text-sm mt-0.5">{t('playlists.subtitle')}</Text>
         </View>
         <TouchableOpacity
-          onPress={() => setShowCreateModal(true)}
-          className="flex-row items-center gap-2 px-4 py-2.5 bg-violet-500 rounded-full flex-shrink-0"
+          onPress={() => { if (requireAuth('playlist')) setShowCreateModal(true); }}
+          className="flex-row items-center gap-2 px-4 py-2.5 bg-white rounded-full flex-shrink-0"
         >
-          <PlusCircle size={16} color="white" />
-          <Text className="text-white text-sm font-semibold">New</Text>
+          <PlusCircle size={16} color="black" />
+          <Text className="text-black text-sm font-semibold">{t('playlists.new')}</Text>
         </TouchableOpacity>
       </View>
 
       {/* Search + View Toggle */}
       <View className="px-5 pb-4 flex-row items-center gap-3">
-        <View className="flex-1 flex-row items-center bg-dark-800 border border-dark-700/60 rounded-xl px-3">
+        <View className="flex-1 flex-row items-center bg-white border border-dark-700/60 rounded-xl px-3">
           <Search size={16} color="#6b7280" />
           <TextInput
             value={searchTerm}
             onChangeText={setSearchTerm}
-            placeholder="Search playlists…"
+            placeholder={t('playlists.search')}
             placeholderTextColor="#6b7280"
-            className="flex-1 py-2 pl-2 text-white text-sm"
+            className="flex-1 py-2 pl-2 text-black text-sm"
           />
         </View>
       </View>
@@ -310,16 +320,16 @@ const Playlists: React.FC = () => {
             <Mail size={18} color="#60a5fa" />
             <View className="flex-1 min-w-0">
               <Text className="text-white text-sm font-medium" numberOfLines={1}>
-                {pendingInvitations.length} pending invitation{pendingInvitations.length > 1 ? 's' : ''}
+                {t('playlists.pendingInvites', { count: pendingInvitations.length })}
               </Text>
-              <Text className="text-blue-300 text-xs">Tap to view and respond</Text>
+              <Text className="text-blue-300 text-xs">{t('playlists.tapToRespond')}</Text>
             </View>
           </View>
           <TouchableOpacity
             onPress={() => { setSelectedInvitation(pendingInvitations[0]); setShowInvitationModal(true); }}
             className="px-3 py-1.5 bg-blue-600 rounded-full flex-shrink-0"
           >
-            <Text className="text-white text-xs font-medium">View</Text>
+            <Text className="text-white text-xs font-medium">{t('playlists.view')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -332,15 +342,15 @@ const Playlists: React.FC = () => {
               <ListMusic size={28} color="#4b5563" />
             </View>
             <View className="items-center">
-              <Text className="text-white font-medium mb-1">No playlists yet</Text>
-              <Text className="text-gray-500 text-sm">Create your first playlist to get started</Text>
+              <Text className="text-white font-medium mb-1">{t('playlists.none')}</Text>
+              <Text className="text-gray-500 text-sm">{t('playlists.noneHint')}</Text>
             </View>
             <TouchableOpacity
-              onPress={() => setShowCreateModal(true)}
+              onPress={() => { if (requireAuth('playlist')) setShowCreateModal(true); }}
               className="flex-row items-center gap-2 px-5 py-2.5 bg-violet-600 rounded-full"
             >
               <PlusCircle size={16} color="white" />
-              <Text className="text-white text-sm font-semibold">Create Playlist</Text>
+              <Text className="text-white text-sm font-semibold">{t('playlists.create')}</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -357,7 +367,7 @@ const Playlists: React.FC = () => {
                   {isShared && !isOwner && (
                     <View className="absolute top-2 right-2 z-10 flex-row items-center gap-1 px-2 py-0.5 bg-blue-600/80 rounded-full">
                       <Share2 size={10} color="white" />
-                      <Text className="text-white text-xs font-semibold">Shared</Text>
+                      <Text className="text-white text-xs font-semibold">{t('playlists.shared')}</Text>
                     </View>
                   )}
                   <PlaylistCard
@@ -387,27 +397,27 @@ const Playlists: React.FC = () => {
         <View className="flex-1 bg-black/70 justify-center px-5">
           <View className="bg-dark-800 border border-dark-700/60 rounded-2xl">
             <View className="flex-row items-center justify-between px-5 py-4 border-b border-dark-700/60">
-              <Text className="text-base font-semibold text-white">New Playlist</Text>
+              <Text className="text-base font-semibold text-white">{t('playlists.newTitle')}</Text>
               <TouchableOpacity onPress={() => setShowCreateModal(false)} className="p-1.5 rounded-lg">
                 <X size={18} color="#6b7280" />
               </TouchableOpacity>
             </View>
             <View className="p-5 gap-4">
               <View>
-                <Text className="text-xs font-medium text-gray-400 mb-1.5">Name</Text>
+                <Text className="text-xs font-medium text-gray-400 mb-1.5">{t('playlists.name')}</Text>
                 <TextInput
                   value={createForm.name}
                   onChangeText={(v) => setCreateForm(prev => ({ ...prev, name: v }))}
                   className="w-full px-3 py-2.5 bg-dark-700 border border-dark-600 rounded-xl text-white text-sm"
-                  placeholder="My awesome playlist"
+                  placeholder={t('playlists.namePh')}
                   placeholderTextColor="#6b7280"
                   autoFocus
                 />
               </View>
               <View className="flex-row items-center justify-between py-1">
                 <View>
-                  <Text className="text-sm text-white font-medium">Public playlist</Text>
-                  <Text className="text-xs text-gray-500">Anyone can find and listen</Text>
+                  <Text className="text-sm text-white font-medium">{t('playlists.public')}</Text>
+                  <Text className="text-xs text-gray-500">{t('playlists.publicHint')}</Text>
                 </View>
                 <Switch
                   value={createForm.isPublic}
@@ -423,13 +433,13 @@ const Playlists: React.FC = () => {
                 disabled={isCreating || !createForm.name.trim()}
                 className={`flex-1 py-2.5 rounded-xl items-center ${isCreating || !createForm.name.trim() ? 'bg-violet-600/40' : 'bg-violet-600'}`}
               >
-                <Text className="text-white text-sm font-semibold">{isCreating ? 'Creating…' : 'Create'}</Text>
+                <Text className="text-white text-sm font-semibold">{isCreating ? t('playlists.creating') : t('playlists.createShort')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setShowCreateModal(false)}
                 className="flex-1 py-2.5 bg-dark-700 rounded-xl items-center"
               >
-                <Text className="text-white text-sm">Cancel</Text>
+                <Text className="text-white text-sm">{t('common.cancel')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -447,7 +457,7 @@ const Playlists: React.FC = () => {
           <View className="bg-dark-800 border border-dark-700/60 rounded-t-2xl" style={{ maxHeight: '85%' }}>
             <View className="flex-row items-center justify-between px-5 py-4 border-b border-dark-700/60">
               <Text className="text-base font-semibold text-white" numberOfLines={1}>
-                Add to "{selectedPlaylist?.name}"
+                {t('playlists.addTo', { name: selectedPlaylist?.name ?? '' })}
               </Text>
               <TouchableOpacity onPress={() => setShowAddTrackModal(false)} className="p-1.5 rounded-lg">
                 <X size={18} color="#6b7280" />
@@ -455,7 +465,7 @@ const Playlists: React.FC = () => {
             </View>
             <ScrollView className="flex-1 px-3 py-3">
               {availableTracks.filter(t => !selectedPlaylist?.tracks.find(pt => pt.id === t.id)).length === 0 ? (
-                <Text className="text-center text-gray-500 text-sm py-12">No tracks available to add.</Text>
+                <Text className="text-center text-gray-500 text-sm py-12">{t('playlists.noTracksToAdd')}</Text>
               ) : (
                 <View className="gap-1">
                   {availableTracks
@@ -488,7 +498,7 @@ const Playlists: React.FC = () => {
                 onPress={() => setShowAddTrackModal(false)}
                 className="w-full py-2.5 bg-dark-700 rounded-xl items-center"
               >
-                <Text className="text-white text-sm">Done</Text>
+                <Text className="text-white text-sm">{t('playlists.done')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -505,7 +515,7 @@ const Playlists: React.FC = () => {
         <View className="flex-1 bg-black/70 justify-end">
           <View className="bg-dark-800 border border-dark-700/60 rounded-t-2xl">
             <View className="flex-row items-center justify-between px-5 py-4 border-b border-dark-700/60">
-              <Text className="text-base font-semibold text-white">Playlist Invitation</Text>
+              <Text className="text-base font-semibold text-white">{t('playlists.invitation')}</Text>
               <TouchableOpacity
                 onPress={() => { setShowInvitationModal(false); setSelectedInvitation(null); }}
                 className="p-1.5 rounded-lg"
@@ -514,7 +524,7 @@ const Playlists: React.FC = () => {
               </TouchableOpacity>
             </View>
             <View className="p-5">
-              <Text className="text-gray-400 text-sm mb-4">You've been invited to collaborate on a playlist.</Text>
+              <Text className="text-gray-400 text-sm mb-4">{t('playlists.invitedBody')}</Text>
               <View className="flex-row items-center gap-4 p-4 bg-dark-700/60 rounded-xl mb-5">
                 {selectedInvitation?.playlists?.cover && (
                   <Image
@@ -525,10 +535,10 @@ const Playlists: React.FC = () => {
                 )}
                 <View className="flex-1 min-w-0">
                   <Text className="text-white font-semibold" numberOfLines={1}>
-                    {selectedInvitation?.playlists?.name || 'Playlist'}
+                    {selectedInvitation?.playlists?.name || t('playlists.playlist')}
                   </Text>
                   <Text className="text-gray-400 text-sm" numberOfLines={1}>
-                    Invited by {selectedInvitation?.inviter?.username || 'Unknown'}
+                    {t('playlists.invitedBy', { name: selectedInvitation?.inviter?.username || t('playlists.unknown') })}
                   </Text>
                 </View>
               </View>
@@ -538,20 +548,20 @@ const Playlists: React.FC = () => {
                   className="flex-1 flex-row items-center justify-center gap-2 py-2.5 bg-green-500 rounded-xl"
                 >
                   <Check size={16} color="white" />
-                  <Text className="text-white text-sm font-semibold">Accept</Text>
+                  <Text className="text-white text-sm font-semibold">{t('playlists.accept')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => handleDeclineInvitation(selectedInvitation.id)}
                   className="flex-1 flex-row items-center justify-center gap-2 py-2.5 bg-dark-700 rounded-xl"
                 >
                   <XCircle size={16} color="#d1d5db" />
-                  <Text className="text-gray-300 text-sm">Decline</Text>
+                  <Text className="text-gray-300 text-sm">{t('playlists.decline')}</Text>
                 </TouchableOpacity>
               </View>
               {pendingInvitations.length > 1 && (
                 <View className="pt-3 border-t border-dark-700/60 flex-row items-center justify-between">
                   <Text className="text-gray-500 text-xs">
-                    {pendingInvitations.length - 1} more invitation{pendingInvitations.length - 1 > 1 ? 's' : ''} pending
+                    {t('playlists.morePending', { count: pendingInvitations.length - 1 })}
                   </Text>
                   <TouchableOpacity
                     onPress={() => {
@@ -559,7 +569,7 @@ const Playlists: React.FC = () => {
                       setSelectedInvitation(pendingInvitations[nextIndex < pendingInvitations.length ? nextIndex : 0]);
                     }}
                   >
-                    <Text className="text-xs text-violet-400">Next →</Text>
+                    <Text className="text-xs text-violet-400">{t('playlists.next')}</Text>
                   </TouchableOpacity>
                 </View>
               )}

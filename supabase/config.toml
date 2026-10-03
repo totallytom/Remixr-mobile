@@ -9,3 +9,34 @@ entrypoint = "./functions/delete-account/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/delete-account/*.html" ]
+
+# verify_jwt is off: the checkout's GET return redirect has no JWT, so POST checks
+# the token itself; the webhook is authenticated by Stripe's signature instead.
+[functions.ticket-checkout]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/ticket-checkout/index.ts"
+
+[functions.stripe-ticket-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/stripe-ticket-webhook/index.ts"
+
+# Writes track_rights and publishes tracks with the service role; verifies the
+# caller's JWT itself (shared Supabase project with the website).
+[functions.submit-track-rights]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/submit-track-rights/index.ts"
+
+[functions.admin-review-action]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/admin-review-action/index.ts"
+
+# Authenticated by the Authorization header RevenueCat sends (REVENUECAT_WEBHOOK_AUTH),
+# not a Supabase JWT.
+[functions.revenuecat-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/revenuecat-webhook/index.ts"

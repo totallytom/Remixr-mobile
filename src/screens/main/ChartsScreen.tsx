@@ -1,13 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import {
   View,
-  Text,
+  Text as RNText,
   TouchableOpacity,
   Image,
   ActivityIndicator,
   FlatList,
+  type TextProps,
 } from 'react-native';
+import { FONTS } from '../../utils/fonts';
+
+const Text = ({ style, ...props }: TextProps) => (
+  <RNText style={[{ fontFamily: FONTS.body }, style]} {...props} />
+);
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors } from '../../theme'
 import { useNavigation } from '@react-navigation/native';
 import type { MaterialTopTabNavigationProp } from '@react-navigation/material-top-tabs';
 import { Play, ThumbsUp, Headphones } from 'lucide-react-native';
@@ -18,21 +25,24 @@ import type { WeeklyChartTrack } from '../../services/musicService';
 import { supabase } from '../../services/supabase';
 import type { HomePagerParamList } from '../../navigation/HomePager';
 import PagerHeader from '../../components/layout/PagerHeader';
+import { MOCK_TOP_TRACKS, MOCK_WEEKLY_TRACKS } from '../../mockdata/charts';
+import { useTranslation } from 'react-i18next';
 
 type ChartsNavProp = MaterialTopTabNavigationProp<HomePagerParamList, 'Charts'>;
 
 type Tab = 'top10' | 'weekly';
 
 const RANK_RING: Record<number, { color: string; bg: string }> = {
-  1: { color: '#EAB308', bg: 'rgba(234,179,8,0.18)' },
-  2: { color: '#9CA3AF', bg: 'rgba(156,163,175,0.18)' },
-  3: { color: '#F97316', bg: 'rgba(249,115,22,0.18)' },
+  1: { color: '#121212', bg: 'yellow' },
+  2: { color: '#121212', bg: 'silver' },
+  3: { color: '#121212', bg: 'rgba(249,115,22,0.18)' },
 };
 
 const rankStyle = (rank: number) =>
-  RANK_RING[rank] ?? { color: 'rgba(255,255,255,0.6)', bg: 'rgba(255,255,255,0.06)' };
+  RANK_RING[rank] ?? { color: '#121212', bg: '#FFFFFF' };
 
 export default function ChartsScreen() {
+  const { t } = useTranslation();
   const navigation = useNavigation<ChartsNavProp>();
   const { playTrack, player, user } = useStore();
 
@@ -51,26 +61,23 @@ export default function ChartsScreen() {
       .order('likes', { ascending: false, nullsFirst: false })
       .limit(10)
       .then(({ data, error }) => {
-        if (!error) {
-          setTopTracks(
-            (data || [])
-              .filter(t => (t.likes || 0) > 0)
-              .map(t => ({
-                track: {
-                  id: t.id, title: t.title, artist: t.artist, album: t.album,
-                  duration: t.duration || 0, cover: t.cover, genre: t.genre,
-                  audioUrl: t.audio_url, price: t.price || 0, boosted: false,
-                },
-                likes: t.likes || 0,
-              }))
-          );
-        }
+        const mapped = (data || [])
+          .filter(t => (t.likes || 0) > 0)
+          .map(t => ({
+            track: {
+              id: t.id, title: t.title, artist: t.artist, album: t.album,
+              duration: t.duration || 0, cover: t.cover, genre: t.genre,
+              audioUrl: t.audio_url, price: t.price || 0, boosted: false,
+            },
+            likes: t.likes || 0,
+          }));
+        setTopTracks(mapped.length > 0 ? mapped : MOCK_TOP_TRACKS);
       })
       .finally(() => setIsLoadingTop(false));
 
     MusicService.getWeeklyCharts()
-      .then(setWeeklyTracks)
-      .catch(() => setWeeklyTracks([]))
+      .then(tracks => setWeeklyTracks(tracks.length > 0 ? tracks : MOCK_WEEKLY_TRACKS))
+      .catch(() => setWeeklyTracks(MOCK_WEEKLY_TRACKS))
       .finally(() => setIsLoadingWeekly(false));
   }, []);
 
@@ -93,9 +100,9 @@ export default function ChartsScreen() {
         track,
         metric: (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5 }}>
-            <ThumbsUp size={11} color="#a78bfa" fill="#a78bfa" />
-            <Text style={{ color: '#a78bfa', fontSize: 11, fontWeight: '600' }}>
-              {likes.toLocaleString()} {likes === 1 ? 'like' : 'likes'}
+            <ThumbsUp size={11} color="#121212" fill="#ffffff" />
+            <Text style={{ color: '#121212', fontSize: 11, fontWeight: '600' }}>
+              {t('charts.likes', { count: likes })}
             </Text>
           </View>
         ),
@@ -106,28 +113,23 @@ export default function ChartsScreen() {
         track,
         metric: (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 5 }}>
-            <Headphones size={11} color="#a78bfa" strokeWidth={2} />
-            <Text style={{ color: '#a78bfa', fontSize: 11, fontWeight: '600' }}>
-              {weeklyPlays.toLocaleString()} {weeklyPlays === 1 ? 'play' : 'plays'} this week
+            <Headphones size={11} color="#121212" strokeWidth={2} />
+            <Text style={{ color: '#121212', fontSize: 11, fontWeight: '600' }}>
+              {t('charts.playsWeek', { count: weeklyPlays })}
             </Text>
           </View>
         ),
       }));
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#121212' }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.dark900 }} edges={['top']}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
       <PagerHeader />
 
       {/* Section title */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', lineHeight: 22 }}>
-            Remixr Charts
-          </Text>
-          <Text style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, marginTop: 1 }}>
-            All-time favourites &amp; this week's plays
-          </Text>
-        </View>
+      <View style={{ paddingHorizontal: 16, paddingBottom: 14, paddingTop: 16 }}>
+        <Text style={{ color: '#000', fontSize: 24, fontWeight: '700' }}>{t('charts.title')}</Text>
+        <Text style={{ color: 'rgba(0,0,0,0.45)', fontSize: 13, marginTop: 2 }}>All-time favourites & this week's plays.</Text>
       </View>
 
       {/* Tabs */}
@@ -135,13 +137,13 @@ export default function ChartsScreen() {
         flexDirection: 'row',
         marginHorizontal: 16,
         marginBottom: 16,
-        backgroundColor: 'rgba(255,255,255,0.06)',
+        backgroundColor: 'white',
         borderRadius: 12,
         padding: 4,
       }}>
         {([
-          { key: 'top10', label: 'Top 10 Charts' },
-          { key: 'weekly', label: 'This Week' },
+          { key: 'top10', label: t('charts.top10') },
+          { key: 'weekly', label: t('charts.weekly') },
         ] as { key: Tab; label: string }[]).map(({ key, label }) => {
           const active = activeTab === key;
           return (
@@ -153,11 +155,11 @@ export default function ChartsScreen() {
                 paddingVertical: 9,
                 borderRadius: 9,
                 alignItems: 'center',
-                backgroundColor: active ? '#7c3aed' : 'transparent',
+                backgroundColor: active ? '#121212' : 'transparent',
               }}
             >
               <Text style={{
-                color: active ? '#fff' : 'rgba(255,255,255,0.45)',
+                color: active ? '#fff' : '#121212',
                 fontSize: 13,
                 fontWeight: active ? '700' : '400',
               }}>
@@ -171,8 +173,8 @@ export default function ChartsScreen() {
       {/* Content */}
       {isLoading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-          <ActivityIndicator size="large" color="#7c3aed" />
-          <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>Loading...</Text>
+          <ActivityIndicator size="large" color="#000000" />
+          <Text style={{ color: '#000000', fontSize: 13 }}>{t('charts.loading')}</Text>
         </View>
       ) : (
         <FlatList
@@ -183,10 +185,10 @@ export default function ChartsScreen() {
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           ListEmptyComponent={
             <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 }}>
-              <Text style={{ color: 'rgba(255,255,255,0.25)', fontSize: 13, textAlign: 'center', lineHeight: 20 }}>
+              <Text style={{ color: 'black', fontSize: 13, textAlign: 'center', lineHeight: 20 }}>
                 {activeTab === 'top10'
-                  ? 'No liked tracks yet. Be the first to like a track!'
-                  : 'No weekly data yet — start listening to see tracks rank up!'}
+                  ? t('charts.emptyTop')
+                  : t('charts.emptyWeekly')}
               </Text>
             </View>
           }
@@ -228,10 +230,10 @@ export default function ChartsScreen() {
 
                 {/* Info */}
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14, lineHeight: 18 }} numberOfLines={1}>
+                  <Text style={{ color: '#121212', fontWeight: '600', fontSize: 14, lineHeight: 18 }} numberOfLines={1}>
                     {item.track.title}
                   </Text>
-                  <Text style={{ color: 'rgba(255,255,255,0.48)', fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+                  <Text style={{ color: '#121212', fontSize: 12, marginTop: 2 }} numberOfLines={1}>
                     {item.track.artist}
                   </Text>
                   {item.metric}
@@ -242,17 +244,18 @@ export default function ChartsScreen() {
                   onPress={() => handlePlay(item.track)}
                   style={{
                     width: 36, height: 36, borderRadius: 18,
-                    backgroundColor: isCurrentlyPlaying ? '#7c3aed' : 'rgba(124,58,237,0.35)',
+                    backgroundColor: isCurrentlyPlaying ? '#7c3aed' : '#FFFFFF',
                     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                   }}
                 >
-                  <Play size={14} color="#fff" fill="#fff" />
+                  <Play size={14} color="#121212" fill="#fff" />
                 </TouchableOpacity>
               </TouchableOpacity>
             );
           }}
         />
       )}
+      </View>
     </SafeAreaView>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import TermsAgreement from '../../components/auth/TermsAgreement';
 import { hap } from '../../utils/haptics';
 import {
   View,
@@ -17,6 +18,9 @@ import { Controller, useForm } from 'react-hook-form';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { X } from 'lucide-react-native';
+import { useTranslation } from 'react-i18next';
+import { localizeAuthError } from '../../utils/authErrors';
 import { Mail, Lock, Eye, EyeOff, User, Mic, Headphones, Music } from 'lucide-react-native';
 import { useStore } from '../../store/useStore';
 import { AuthService } from '../../services/authService';
@@ -56,6 +60,7 @@ export function clearSignupHints() {
 const LoginScreen: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
   const [error, setError] = useState<string>('');
@@ -64,6 +69,7 @@ const LoginScreen: React.FC = () => {
 
   const { login, register } = useStore();
   const navigation = useNavigation<AuthNav>();
+  const { t } = useTranslation();
 
   const logoScale = useRef(new Animated.Value(0)).current;
   const containerOpacity = useRef(new Animated.Value(0)).current;
@@ -101,27 +107,31 @@ const LoginScreen: React.FC = () => {
       const loginPromise = login(data.email, data.password);
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(
-          () => reject(new Error('Connection timed out. Check your internet and try again.')),
+          () => reject(new Error(t('auth.login.timeout'))),
           25000,
         ),
       );
       await Promise.race([loginPromise, timeoutPromise]);
       clearSignupHints();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(localizeAuthError(err, 'auth.login.failed'));
     } finally {
       setIsLoading(false);
     }
   };
 
   const onRegisterSubmit = async (data: RegisterForm) => {
+    if (!acceptedTerms) {
+      setError(t('auth.signup.mustAgree'));
+      return;
+    }
     setIsLoading(true);
     setError('');
     try {
       pendingSignupRole = data.role;
       if (data.role === 'musician') pendingOnboarding = true;
 
-      const user = await register({
+      await register({
         username: data.username,
         email: data.email,
         password: data.password,
@@ -129,18 +139,9 @@ const LoginScreen: React.FC = () => {
         artistName: data.artistName,
         bio: data.bio,
       });
-
-      if (user?.id && user?.email) {
-        const apiBase = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
-        await fetch(`${apiBase}/api/create-stripe-customer`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id, email: user.email }),
-        });
-      }
     } catch (err) {
       clearSignupHints();
-      setError(err instanceof Error ? err.message : 'Registration failed');
+      setError(localizeAuthError(err, 'auth.signup.failed'));
     } finally {
       setIsLoading(false);
     }
@@ -153,7 +154,7 @@ const LoginScreen: React.FC = () => {
       await AuthService.resetPassword(data.email);
       setResetEmailSent(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Password reset failed');
+      setError(localizeAuthError(err, 'auth.login.resetFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -170,6 +171,19 @@ const LoginScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      {/* Opened on top of the app while browsing as a guest: let them back out. */}
+      {navigation.canGoBack() && (
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={t('guest.notNow')}
+          style={{ position: 'absolute', top: 54, right: 18, zIndex: 10, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+        >
+          <Text style={{ color: '#8a8aa3', fontSize: 14, fontWeight: '600' }}>{t('guest.notNow')}</Text>
+          <X size={16} color="#8a8aa3" />
+        </TouchableOpacity>
+      )}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -194,8 +208,8 @@ const LoginScreen: React.FC = () => {
                   resizeMode="cover"
                 />
               </Animated.View>
-              <Text style={styles.appTitle}>Remixr</Text>
-              <Text style={styles.appSubtitle}>Connect with musicians and enthusiasts worldwide</Text>
+              <Text style={styles.appTitle}>Re-Mixed</Text>
+              <Text style={styles.appSubtitle}>{t('auth.login.tagline')}</Text>
             </View>
 
             {/* Error */}
@@ -210,23 +224,23 @@ const LoginScreen: React.FC = () => {
               <View style={styles.form}>
                 {/* Email */}
                 <View style={styles.field}>
-                  <Text style={styles.label}>Email Address</Text>
+                  <Text style={styles.label}>{t('auth.common.emailAddress')}</Text>
                   <View style={styles.inputRow}>
                     <Mail size={20} color="#6b6b8a" style={styles.inputIcon} />
                     <Controller
                       control={loginForm.control}
                       name="email"
                       rules={{
-                        required: 'Email is required',
+                        required: t('auth.validation.emailRequired'),
                         pattern: {
                           value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                          message: 'Invalid email address',
+                          message: t('auth.validation.emailInvalid'),
                         },
                       }}
                       render={({ field: { onChange, onBlur, value } }) => (
                         <TextInput
                           style={styles.input}
-                          placeholder="Enter your email"
+                          placeholder={t('auth.common.enterEmail')}
                           placeholderTextColor="#6b6b8a"
                           keyboardType="email-address"
                           autoCapitalize="none"
@@ -245,20 +259,20 @@ const LoginScreen: React.FC = () => {
 
                 {/* Password */}
                 <View style={styles.field}>
-                  <Text style={styles.label}>Password</Text>
+                  <Text style={styles.label}>{t('auth.common.password')}</Text>
                   <View style={styles.inputRow}>
                     <Lock size={20} color="#6b6b8a" style={styles.inputIcon} />
                     <Controller
                       control={loginForm.control}
                       name="password"
                       rules={{
-                        required: 'Password is required',
-                        minLength: { value: 6, message: 'Password must be at least 6 characters' },
+                        required: t('auth.validation.passwordRequired'),
+                        minLength: { value: 6, message: t('auth.validation.passwordMin') },
                       }}
                       render={({ field: { onChange, onBlur, value } }) => (
                         <TextInput
                           style={[styles.input, styles.inputWithAction]}
-                          placeholder="Enter your password"
+                          placeholder={t('auth.common.enterPassword')}
                           placeholderTextColor="#6b6b8a"
                           secureTextEntry={!showPassword}
                           onChangeText={onChange}
@@ -271,7 +285,7 @@ const LoginScreen: React.FC = () => {
                       onPress={() => { hap.tap(); setShowPassword(v => !v); }}
                       style={styles.eyeButton}
                       accessibilityRole="button"
-                      accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                      accessibilityLabel={showPassword ? t('auth.common.hidePassword') : t('auth.common.showPassword')}
                     >
                       {showPassword ? (
                         <EyeOff size={20} color="#6b6b8a" />
@@ -289,9 +303,9 @@ const LoginScreen: React.FC = () => {
                     onPress={() => { hap.tap(); setShowForgotPassword(true); }}
                     style={styles.forgotLink}
                     accessibilityRole="button"
-                    accessibilityLabel="Forgot your password"
+                    accessibilityLabel={t('auth.login.forgot')}
                   >
-                    <Text style={styles.linkText}>Forgot your password?</Text>
+                    <Text style={styles.linkText}>{t('auth.login.forgot')}</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -302,9 +316,9 @@ const LoginScreen: React.FC = () => {
                   activeOpacity={0.85}
                 >
                   {isLoading ? (
-                    <ActivityIndicator size="small" color="#fff" />
+                    <ActivityIndicator size="small" color="#000000" />
                   ) : (
-                    <Text style={styles.primaryButtonText}>Sign In</Text>
+                    <Text style={styles.primaryButtonText}>{t('auth.common.signIn')}</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -315,10 +329,8 @@ const LoginScreen: React.FC = () => {
               <View style={styles.form}>
                 {resetEmailSent ? (
                   <View style={styles.centeredSection}>
-                    <Text style={styles.sectionTitle}>Check Your Email</Text>
-                    <Text style={styles.sectionBody}>
-                      We've sent password reset instructions to your email address.
-                    </Text>
+                    <Text style={styles.sectionTitle}>{t('auth.login.checkEmailTitle')}</Text>
+                    <Text style={styles.sectionBody}>{t('auth.login.checkEmailBody')}</Text>
                     <TouchableOpacity
                       onPress={() => {
                         hap.tap();
@@ -326,37 +338,34 @@ const LoginScreen: React.FC = () => {
                         setResetEmailSent(false);
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel="Return to login"
+                      accessibilityLabel={t('auth.login.returnToLogin')}
                     >
-                      <Text style={styles.linkText}>Return to login</Text>
+                      <Text style={styles.linkText}>{t('auth.login.returnToLogin')}</Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
                   <View>
-                    <Text style={styles.sectionTitle}>Reset Your Password</Text>
-                    <Text style={styles.sectionBody}>
-                      Enter your email address and you will receive instructions to reset your
-                      password.
-                    </Text>
+                    <Text style={styles.sectionTitle}>{t('auth.login.resetTitle')}</Text>
+                    <Text style={styles.sectionBody}>{t('auth.login.resetBody')}</Text>
 
                     <View style={styles.field}>
-                      <Text style={styles.label}>Email Address</Text>
+                      <Text style={styles.label}>{t('auth.common.emailAddress')}</Text>
                       <View style={styles.inputRow}>
                         <Mail size={20} color="#6b6b8a" style={styles.inputIcon} />
                         <Controller
                           control={forgotPasswordForm.control}
                           name="email"
                           rules={{
-                            required: 'Email is required',
+                            required: t('auth.validation.emailRequired'),
                             pattern: {
                               value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                              message: 'Invalid email address',
+                              message: t('auth.validation.emailInvalid'),
                             },
                           }}
                           render={({ field: { onChange, onBlur, value } }) => (
                             <TextInput
                               style={styles.input}
-                              placeholder="Enter your email"
+                              placeholder={t('auth.common.enterEmail')}
                               placeholderTextColor="#6b6b8a"
                               keyboardType="email-address"
                               autoCapitalize="none"
@@ -383,18 +392,18 @@ const LoginScreen: React.FC = () => {
                         activeOpacity={0.85}
                       >
                         {isLoading ? (
-                          <ActivityIndicator size="small" color="#fff" />
+                          <ActivityIndicator size="small" color="#000000" />
                         ) : (
-                          <Text style={styles.primaryButtonText}>Send Reset Instructions</Text>
+                          <Text style={styles.primaryButtonText}>{t('auth.login.sendReset')}</Text>
                         )}
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.cancelButton}
                         onPress={() => { hap.tap(); setShowForgotPassword(false); }}
                         accessibilityRole="button"
-                        accessibilityLabel="Cancel"
+                        accessibilityLabel={t('auth.common.cancel')}
                       >
-                        <Text style={styles.cancelButtonText}>Cancel</Text>
+                        <Text style={styles.cancelButtonText}>{t('auth.common.cancel')}</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -440,23 +449,23 @@ const LoginScreen: React.FC = () => {
 
                 {/* Email */}
                 <View style={styles.field}>
-                  <Text style={styles.label}>Email Address</Text>
+                  <Text style={styles.label}>{t('auth.common.emailAddress')}</Text>
                   <View style={styles.inputRow}>
                     <Mail size={20} color="#6b6b8a" style={styles.inputIcon} />
                     <Controller
                       control={registerForm.control}
                       name="email"
                       rules={{
-                        required: 'Email is required',
+                        required: t('auth.validation.emailRequired'),
                         pattern: {
                           value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                          message: 'Invalid email address',
+                          message: t('auth.validation.emailInvalid'),
                         },
                       }}
                       render={({ field: { onChange, onBlur, value } }) => (
                         <TextInput
                           style={styles.input}
-                          placeholder="Enter your email"
+                          placeholder={t('auth.common.enterEmail')}
                           placeholderTextColor="#6b6b8a"
                           keyboardType="email-address"
                           autoCapitalize="none"
@@ -477,15 +486,15 @@ const LoginScreen: React.FC = () => {
 
                 {/* Password */}
                 <View style={styles.field}>
-                  <Text style={styles.label}>Password</Text>
+                  <Text style={styles.label}>{t('auth.common.password')}</Text>
                   <View style={styles.inputRow}>
                     <Lock size={20} color="#6b6b8a" style={styles.inputIcon} />
                     <Controller
                       control={registerForm.control}
                       name="password"
                       rules={{
-                        required: 'Password is required',
-                        minLength: { value: 6, message: 'Password must be at least 6 characters' },
+                        required: t('auth.validation.passwordRequired'),
+                        minLength: { value: 6, message: t('auth.validation.passwordMin') },
                       }}
                       render={({ field: { onChange, onBlur, value } }) => (
                         <TextInput
@@ -503,7 +512,7 @@ const LoginScreen: React.FC = () => {
                       onPress={() => { hap.tap(); setShowPassword(v => !v); }}
                       style={styles.eyeButton}
                       accessibilityRole="button"
-                      accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                      accessibilityLabel={showPassword ? t('auth.common.hidePassword') : t('auth.common.showPassword')}
                     >
                       {showPassword ? (
                         <EyeOff size={20} color="#6b6b8a" />
@@ -528,9 +537,9 @@ const LoginScreen: React.FC = () => {
                       control={registerForm.control}
                       name="confirmPassword"
                       rules={{
-                        required: 'Please confirm your password',
+                        required: t('auth.validation.confirmRequired'),
                         validate: value =>
-                          value === registerForm.getValues('password') || 'Passwords do not match',
+                          value === registerForm.getValues('password') || t('auth.validation.passwordsMismatch'),
                       }}
                       render={({ field: { onChange, onBlur, value } }) => (
                         <TextInput
@@ -671,14 +680,21 @@ const LoginScreen: React.FC = () => {
                   </>
                 )}
 
+                <TermsAgreement
+                  accepted={acceptedTerms}
+                  onChange={setAcceptedTerms}
+                  textColor={MUTED}
+                  linkColor="#121212"
+                />
+
                 <TouchableOpacity
-                  style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
+                  style={[styles.primaryButton, (isLoading || !acceptedTerms) && styles.buttonDisabled]}
                   onPress={registerForm.handleSubmit(onRegisterSubmit)}
-                  disabled={isLoading}
+                  disabled={isLoading || !acceptedTerms}
                   activeOpacity={0.85}
                 >
                   {isLoading ? (
-                    <ActivityIndicator size="small" color="#fff" />
+                    <ActivityIndicator size="small" color="#000000" />
                   ) : (
                     <Text style={styles.primaryButtonText}>Create Account</Text>
                   )}
@@ -690,16 +706,17 @@ const LoginScreen: React.FC = () => {
             <View style={styles.footer}>
               {activeTab === 'login' ? (
                 <Text style={styles.footerText}>
-                  Don't have an account?{' '}
-                  <Text style={styles.linkText} onPress={() => switchTab('register')}>
-                    Sign up
+                  {t('auth.common.noAccount')}{' '}
+                  {/* All signups go through SignupScreen, which has the date-of-birth check. */}
+                  <Text style={styles.linkText} onPress={() => navigation.navigate('Signup')}>
+                    {t('auth.common.signUpLink')}
                   </Text>
                 </Text>
               ) : (
                 <Text style={styles.footerText}>
-                  Already have an account?{' '}
+                  {t('auth.common.haveAccount')}{' '}
                   <Text style={styles.linkText} onPress={() => switchTab('login')}>
-                    Sign in
+                    {t('auth.common.signInLink')}
                   </Text>
                 </Text>
               )}
@@ -723,7 +740,7 @@ const MUTED = '#6b6b8a';
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: DARK_BG,
+    backgroundColor: 'gray',
   },
   flex: {
     flex: 1,
@@ -734,7 +751,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   card: {
-    backgroundColor: CARD_BG,
+    backgroundColor: 'white',
     borderRadius: 20,
     padding: 28,
     borderWidth: 1,
@@ -758,13 +775,13 @@ const styles = StyleSheet.create({
   appTitle: {
     fontSize: 28,
     fontWeight: '700',
-    color: PURPLE_LIGHT,
+    color: '#121212',
     marginBottom: 6,
     textAlign: 'center',
   },
   appSubtitle: {
     fontSize: 14,
-    color: MUTED,
+    color: 'black',
     textAlign: 'center',
   },
   errorBox: {
@@ -788,12 +805,12 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#e2e2f0',
+    color: '#121212',
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: INPUT_BG,
+    backgroundColor: 'white',
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 10,
@@ -805,7 +822,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     height: 48,
-    color: '#fff',
+    color: '#121212',
     fontSize: 14,
   },
   inputWithAction: {
@@ -824,11 +841,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   linkText: {
-    color: PURPLE_LIGHT,
+    color: '#121212',
     fontSize: 13,
   },
   primaryButton: {
-    backgroundColor: PURPLE,
+    backgroundColor: 'black',
     borderRadius: 10,
     height: 50,
     alignItems: 'center',
@@ -839,7 +856,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   primaryButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
   },

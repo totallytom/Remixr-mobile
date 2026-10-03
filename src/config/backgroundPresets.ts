@@ -17,8 +17,8 @@ export const BACKGROUND_PRESETS: BackgroundPreset[] = [
   // relevant block.  React Native will auto-pick the @2x / @3x variant based
   // on the device pixel density.
   //
-  { id: 'teal2x',   label: 'Teal',   color: '#08091a',
-  image: require('../../assets/backgrounds/bg1-2x.png')}
+  { id: 'teal', label: 'Teal', color: '#08091a',
+    image: require('../../assets/backgrounds/Teal.png'), overlay: 0.45 },
   //
   // { id: 'citynight',label: 'City Night',color: '#0a0a10',
   //   image: require('../../assets/backgrounds/citynight.png'), overlay: 0.60 },

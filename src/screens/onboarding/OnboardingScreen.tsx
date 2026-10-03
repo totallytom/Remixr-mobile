@@ -23,6 +23,8 @@ import {
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useStore } from '../../store/useStore';
+import { useTranslation } from 'react-i18next';
+import { genreLabel } from '../../utils/genres';
 import { supabase } from '../../services/supabase';
 import { getAvatarUrl } from '../../utils/avatar';
 import { isMusicianRole } from '../../utils/userRole';
@@ -46,13 +48,14 @@ const ProfilePreview: React.FC<{
   bio: string;
   genres: string[];
 }> = ({ avatarPreview, displayName, handle, bio, genres }) => {
-  const name = displayName.trim() || 'Your Name';
+  const { t } = useTranslation();
+  const name = displayName.trim() || t('onboarding.profile.yourName');
   const slug = handle.trim() || 'yourhandle';
 
   return (
     <View>
       <Text className="text-xs font-medium text-white/30 uppercase tracking-widest mb-3 text-center">
-        Public profile preview
+        {t('onboarding.profile.previewLabel')}
       </Text>
 
       <View className="rounded-2xl overflow-hidden bg-dark-800 border border-dark-700">
@@ -89,7 +92,7 @@ const ProfilePreview: React.FC<{
             </Text>
           ) : (
             <Text className="text-sm text-white/20 italic mb-4">
-              Your bio will appear here
+              {t('onboarding.profile.bioPreview')}
             </Text>
           )}
 
@@ -101,10 +104,10 @@ const ProfilePreview: React.FC<{
                     key={g}
                     className="px-2.5 py-1 rounded-full border border-primary-500/20 bg-primary-500/15"
                   >
-                    <Text className="text-xs text-primary-300">{g}</Text>
+                    <Text className="text-xs text-primary-300">{genreLabel(g)}</Text>
                   </View>
                 ))
-              : ['Genre', 'Tags'].map((g) => (
+              : [t('onboarding.profile.genreTag'), t('onboarding.profile.tagsTag')].map((g) => (
                   <View key={g} className="px-2.5 py-1 rounded-full border border-dark-600 bg-dark-700">
                     <Text className="text-xs text-dark-500">{g}</Text>
                   </View>
@@ -113,7 +116,7 @@ const ProfilePreview: React.FC<{
 
           {/* Stub stats */}
           <View className="flex-row gap-5 mt-5 pt-4 border-t border-white/5">
-            {([['0', 'Tracks'], ['0', 'Followers'], ['0', 'Following']] as const).map(([n, l]) => (
+            {([['0', t('common.tracks')], ['0', t('common.followers')], ['0', t('common.following')]] as const).map(([n, l]) => (
               <View key={l} className="items-center">
                 <Text className="text-sm font-bold text-white">{n}</Text>
                 <Text className="text-[10px] text-white/30">{l}</Text>
@@ -126,7 +129,7 @@ const ProfilePreview: React.FC<{
       {/* URL hint */}
       <View className="mt-3 flex-row items-center gap-2">
         <View className="flex-1 h-px bg-white/5" />
-        <Text className="text-[10px] text-white/25 px-2">remixr.app/@{slug}</Text>
+        <Text className="text-[10px] text-white/25 px-2">re-mixed.net/@{slug}</Text>
         <View className="flex-1 h-px bg-white/5" />
       </View>
     </View>
@@ -136,7 +139,7 @@ const ProfilePreview: React.FC<{
 // ─── Handle status icon ───────────────────────────────────────────────────────
 
 const HandleIcon: React.FC<{ status: HandleStatus }> = ({ status }) => {
-  if (status === 'checking') return <ActivityIndicator size="small" color="rgba(255,255,255,0.4)" />;
+  if (status === 'checking') return <ActivityIndicator size="small" color="#000000" />;
   if (status === 'available') return <Check size={14} color="#34d399" />;
   if (status === 'taken') return <X size={14} color="#f87171" />;
   return null;
@@ -148,6 +151,7 @@ const Onboarding: React.FC = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<OnboardingStackParamList, 'Onboarding'>>();
   const { user, isAuthenticated, updateProfile, setUserAvatar } = useStore();
+  const { t } = useTranslation();
 
   // Mark identity step as in-progress (persists across logouts via AsyncStorage)
   useEffect(() => {
@@ -192,7 +196,7 @@ const Onboarding: React.FC = () => {
       setAvatarUri(result.assets[0].uri);
       setError('');
     } catch {
-      setError('Failed to pick image.');
+      setError(t('onboarding.profile.pickImageFailed'));
     }
   };
 
@@ -245,10 +249,10 @@ const Onboarding: React.FC = () => {
 
   const onSubmit = async () => {
     if (!user) return;
-    if (!displayName.trim()) { setError('Display name is required.'); return; }
-    if (handleStatus === 'taken') { setError('That handle is taken — choose another.'); return; }
+    if (!displayName.trim()) { setError(t('onboarding.profile.displayNameRequired')); return; }
+    if (handleStatus === 'taken') { setError(t('onboarding.profile.handleTaken')); return; }
     if (handleStatus === 'invalid' || !HANDLE_RE.test(handle)) {
-      setError('Handle must be 3–24 characters: letters, numbers, underscores only.');
+      setError(t('onboarding.profile.handleInvalid'));
       return;
     }
 
@@ -284,7 +288,7 @@ const Onboarding: React.FC = () => {
       if (user) await clearOnboardingPending(user.id);
       navigation.navigate('OnboardingUpload');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save profile. Please try again.');
+      setError(err instanceof Error ? err.message : t('onboarding.profile.saveFailed'));
     } finally {
       setIsSaving(false);
     }
@@ -301,8 +305,8 @@ const Onboarding: React.FC = () => {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top']}>
       <View className="flex-1 bg-dark-900 items-center justify-center gap-3">
-        <ActivityIndicator size="large" color="rgba(255,255,255,0.4)" />
-        <Text className="text-sm text-white/40">Setting up your account…</Text>
+        <ActivityIndicator size="large" color="#000000" />
+        <Text className="text-sm text-black">{t('onboarding.profile.settingUp')}</Text>
       </View>
       </SafeAreaView>
     );
@@ -324,11 +328,11 @@ const Onboarding: React.FC = () => {
 
   const handleHintText =
     handleStatus === 'taken'
-      ? 'Handle already taken'
+      ? t('onboarding.profile.handleTakenHint')
       : handleStatus === 'available'
-      ? 'Handle is available'
+      ? t('onboarding.profile.handleAvailable')
       : handleStatus === 'invalid'
-      ? '3–24 chars · letters, numbers, underscores'
+      ? t('onboarding.profile.handleRules')
       : '.';
 
   return (
@@ -343,14 +347,14 @@ const Onboarding: React.FC = () => {
         <View className="flex-row items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 mb-4">
           <Music2 size={12} color="#a78bfa" />
           <Text className="text-xs text-violet-300 font-medium">
-            Step 2 of 3 · Build your identity
+            {t('onboarding.profile.step')}
           </Text>
         </View>
         <Text className="text-3xl font-extrabold text-white tracking-tight mb-2 text-center">
-          Set up your artist profile
+          {t('onboarding.profile.title')}
         </Text>
         <Text className="text-sm text-white/40 text-center">
-          This becomes your public page. Takes 60 seconds.
+          {t('onboarding.profile.subtitle')}
         </Text>
       </View>
 
@@ -378,22 +382,22 @@ const Onboarding: React.FC = () => {
             )}
           </TouchableOpacity>
           <View className="flex-1">
-            <Text className="text-sm font-medium text-white">Profile photo</Text>
+            <Text className="text-sm font-medium text-white">{t('onboarding.profile.photo')}</Text>
             <Text className="text-xs text-white/40 mt-0.5">
-              Optional · JPG, PNG · Max 5 MB
+              {t('onboarding.profile.photoHint')}
             </Text>
             {avatarUri ? (
               <TouchableOpacity
                 onPress={() => setAvatarUri(null)}
                 className="mt-1"
               >
-                <Text className="text-xs text-red-400">Remove</Text>
+                <Text className="text-xs text-red-400">{t('common.remove')}</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity onPress={pickAvatar} className="mt-1">
                 <View className="flex-row items-center gap-1">
                   <Camera size={12} color="#a78bfa" />
-                  <Text className="text-xs text-violet-400">Choose photo</Text>
+                  <Text className="text-xs text-violet-400">{t('onboarding.profile.choosePhoto')}</Text>
                 </View>
               </TouchableOpacity>
             )}
@@ -403,12 +407,12 @@ const Onboarding: React.FC = () => {
         {/* Display name */}
         <View className="gap-1.5">
           <Text className="text-sm font-medium text-white">
-            Display name <Text className="text-red-400">*</Text>
+            {t('onboarding.profile.displayName')} <Text className="text-red-400">*</Text>
           </Text>
           <TextInput
             value={displayName}
             onChangeText={setDisplayName}
-            placeholder="Your artist or stage name"
+            placeholder={t('onboarding.profile.displayNamePlaceholder')}
             placeholderTextColor="#4b5563"
             maxLength={60}
             className="px-4 py-3 bg-dark-700 border border-dark-600 rounded-lg text-white"
@@ -418,8 +422,8 @@ const Onboarding: React.FC = () => {
         {/* Handle */}
         <View className="gap-1.5">
           <Text className="text-sm font-medium text-white">
-            Handle <Text className="text-red-400">*</Text>
-            <Text className="text-xs font-normal text-white/30"> · remixr.app/@handle</Text>
+            {t('onboarding.profile.handle')} <Text className="text-red-400">*</Text>
+            <Text className="text-xs font-normal text-white/30"> · re-mixed.net/@handle</Text>
           </Text>
           <View className={`flex-row items-center bg-dark-700 border rounded-lg px-3 gap-2 ${handleBorderColor}`}>
             <AtSign size={16} color="#6b7280" />
@@ -444,12 +448,12 @@ const Onboarding: React.FC = () => {
         {/* Bio */}
         <View className="gap-1.5">
           <Text className="text-sm font-medium text-white">
-            Bio <Text className="text-xs font-normal text-white/30"> · optional</Text>
+            {t('onboarding.profile.bio')} <Text className="text-xs font-normal text-white/30"> · {t('common.optional')}</Text>
           </Text>
           <TextInput
             value={bio}
             onChangeText={setBio}
-            placeholder="One or two lines about your sound…"
+            placeholder={t('onboarding.profile.bioPlaceholder')}
             placeholderTextColor="#4b5563"
             multiline
             numberOfLines={3}
@@ -464,8 +468,8 @@ const Onboarding: React.FC = () => {
         {/* Genres */}
         <View className="gap-2">
           <Text className="text-sm font-medium text-white">
-            Genres{' '}
-            <Text className="text-xs font-normal text-white/30">· pick up to {MAX_GENRES}</Text>
+            {t('onboarding.profile.genres')}{' '}
+            <Text className="text-xs font-normal text-white/30">· {t('onboarding.profile.pickUpTo', { count: MAX_GENRES })}</Text>
           </Text>
           <View className="flex-row flex-wrap gap-2">
             {GENRES.map((g) => {
@@ -493,7 +497,7 @@ const Onboarding: React.FC = () => {
                         : 'text-gray-400'
                     }`}
                   >
-                    {g}
+                    {genreLabel(g)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -511,10 +515,10 @@ const Onboarding: React.FC = () => {
           }`}
         >
           {isSaving ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color="#000000" />
           ) : (
             <>
-              <Text className="text-white font-semibold">Save &amp; upload your first track</Text>
+              <Text className="text-white font-semibold">{t('onboarding.profile.submit')}</Text>
               <ArrowRight size={16} color="#fff" />
             </>
           )}
@@ -522,7 +526,7 @@ const Onboarding: React.FC = () => {
 
         {/* Skip */}
         <TouchableOpacity onPress={onSkip} className="items-center py-1">
-          <Text className="text-xs text-white/25 underline">Skip for now</Text>
+          <Text className="text-xs text-white/25 underline">{t('onboarding.profile.skip')}</Text>
         </TouchableOpacity>
       </View>
 

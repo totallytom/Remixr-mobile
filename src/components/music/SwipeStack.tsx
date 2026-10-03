@@ -4,6 +4,7 @@ import { ChevronLeft } from 'lucide-react-native';
 import { DiscoveryCard } from './DiscoveryCard';
 import type { Track } from './DiscoveryCard';
 import { MusicService } from '../../services/musicService';
+import i18n from '../../i18n';
 
 const PRELOAD_THRESHOLD = 2;
 const FETCH_PAGE_SIZE = 8;
@@ -125,14 +126,14 @@ export const SwipeStack: React.FC<SwipeStackProps> = ({
         <View style={styles.emptyCard}>
           {isLoadingMore ? (
             <>
-              <ActivityIndicator size="large" color="#7c3aed" style={{ marginBottom: 16 }} />
-              <Text style={styles.emptyText}>Finding more music…</Text>
+              <ActivityIndicator size="large" color="#000000" style={{ marginBottom: 16 }} />
+              <Text style={styles.emptyText}>{i18n.t('discover.finding')}</Text>
             </>
           ) : (
             <>
               <Text style={styles.emptyEmoji}>♪</Text>
-              <Text style={styles.emptyText}>No more tracks to swipe.</Text>
-              <Text style={styles.emptySubText}>Try another genre or search.</Text>
+              <Text style={styles.emptyText}>{i18n.t('discover.noMore')}</Text>
+              <Text style={styles.emptySubText}>{i18n.t('discover.tryAnother')}</Text>
             </>
           )}
         </View>

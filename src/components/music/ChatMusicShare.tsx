@@ -1,14 +1,20 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
+  Text as RNText,
   Image,
   TouchableOpacity,
   Modal,
   FlatList,
   StyleSheet,
   Alert,
+  type TextProps,
 } from 'react-native';
+import { FONTS } from '../../utils/fonts';
+
+const Text = ({ style, ...props }: TextProps) => (
+  <RNText style={[{ fontFamily: FONTS.body }, style]} {...props} />
+);
 import { Music, Play, Pause, Plus, Check, X } from 'lucide-react-native';
 import { useStore } from '../../store/useStore';
 
@@ -23,6 +29,8 @@ export interface Track {
   genre?: string;
 }
 import { MusicService } from '../../services/musicService';
+import { useTranslation } from 'react-i18next';
+import { isDuplicateError } from '../../utils/appError';
 
 interface ChatMusicShareProps {
   track: Track;
@@ -30,6 +38,7 @@ interface ChatMusicShareProps {
 }
 
 const ChatMusicShare: React.FC<ChatMusicShareProps> = ({ track, onPlay }) => {
+  const { t } = useTranslation();
   const { player, playTrack, pauseTrack, user, playlists } = useStore();
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   const [addedId, setAddedId] = useState<string | null>(null);
@@ -47,7 +56,7 @@ const ChatMusicShare: React.FC<ChatMusicShareProps> = ({ track, onPlay }) => {
       }, 1000);
     } catch (error: any) {
       const msg = error?.message ?? '';
-      if (msg.includes('duplicate key') || msg.includes('unique constraint')) {
+      if (isDuplicateError(error) || msg.includes('duplicate key') || msg.includes('unique constraint')) {
         setAddedId(playlistId);
         setTimeout(() => { setAddedId(null); setShowPlaylistMenu(false); }, 1000);
       } else {
@@ -65,7 +74,7 @@ const ChatMusicShare: React.FC<ChatMusicShareProps> = ({ track, onPlay }) => {
       onPlay(track);
     } else {
       if (!track.audioUrl) {
-        Alert.alert('Unavailable', 'No audio file available for this track.');
+        Alert.alert(t('chatShare.unavailableTitle'), t('chatShare.unavailable'));
         return;
       }
       try {
@@ -75,7 +84,7 @@ const ChatMusicShare: React.FC<ChatMusicShareProps> = ({ track, onPlay }) => {
         }
       } catch (error) {
         console.error('Failed to play track:', error);
-        Alert.alert('Error', 'Failed to play track. Please try again.');
+        Alert.alert(t('common.error'), t('chatShare.playFailed'));
       }
     }
   };
@@ -89,8 +98,8 @@ const ChatMusicShare: React.FC<ChatMusicShareProps> = ({ track, onPlay }) => {
             <Music size={14} color="#fff" />
           </View>
           <View>
-            <Text style={styles.sharedTitle}>Shared Track</Text>
-            <Text style={styles.sharedSub}>via Music</Text>
+            <Text style={styles.sharedTitle}>{t('chatShare.sharedTrack')}</Text>
+            <Text style={styles.sharedSub}>{t('chatShare.viaMusic')}</Text>
           </View>
         </View>
       </View>
@@ -108,7 +117,7 @@ const ChatMusicShare: React.FC<ChatMusicShareProps> = ({ track, onPlay }) => {
         </View>
         <View style={styles.trackDetails}>
           <Text style={styles.trackTitle} numberOfLines={1}>{track.title}</Text>
-          <Text style={styles.trackArtist} numberOfLines={1}>{track.artist || 'Unknown Artist'}</Text>
+          <Text style={styles.trackArtist} numberOfLines={1}>{track.artist || t('chatShare.unknownArtist')}</Text>
           {track.album ? (
             <Text style={styles.trackAlbum} numberOfLines={1}>{track.album}</Text>
           ) : null}
@@ -133,7 +142,7 @@ const ChatMusicShare: React.FC<ChatMusicShareProps> = ({ track, onPlay }) => {
         </View>
         <View style={styles.availableRow}>
           <View style={styles.availableDot} />
-          <Text style={styles.availableText}>Available</Text>
+          <Text style={styles.availableText}>{t('chatShare.available')}</Text>
         </View>
       </View>
 
@@ -151,13 +160,13 @@ const ChatMusicShare: React.FC<ChatMusicShareProps> = ({ track, onPlay }) => {
         >
           <View style={styles.playlistSheet}>
             <View style={styles.playlistSheetHeader}>
-              <Text style={styles.playlistSheetTitle}>Add to playlist</Text>
+              <Text style={styles.playlistSheetTitle}>{t('chatShare.addToPlaylist')}</Text>
               <TouchableOpacity onPress={() => setShowPlaylistMenu(false)}>
                 <X size={18} color="#6b6b8a" />
               </TouchableOpacity>
             </View>
             {userPlaylists.length === 0 ? (
-              <Text style={styles.emptyText}>No playlists yet</Text>
+              <Text style={styles.emptyText}>{t('chatShare.noPlaylists')}</Text>
             ) : (
               <FlatList
                 data={userPlaylists}

@@ -1,6 +1,7 @@
 /**
  * Copyright check service – runs before upload to block known copyrighted content.
- * Uses metadata + file hash checks via /api/check-copyright.
+ * Uses metadata checks via /api/check-copyright (the file hash check the web app
+ * also sends isn't computed on native, so the server skips it).
  * Sends Supabase JWT when available so verified artists (is_verified_artist) can bypass checks.
  */
 
@@ -13,31 +14,8 @@ export interface CopyrightCheckResult {
   reason?: string;
 }
 
-// Returns null on native (no arrayBuffer/crypto.subtle) — server skips hash check but still checks metadata.
-async function computeFileHash(file: File): Promise<string | null> {
+export async function checkCopyright(metadata: { title: string; artist: string }): Promise<CopyrightCheckResult> {
   try {
-    if (typeof (file as unknown as Record<string, unknown>).arrayBuffer !== 'function') return null;
-    if (typeof crypto?.subtle?.digest !== 'function') return null;
-    const buffer = await file.arrayBuffer();
-    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Check if an upload is allowed (not detected as copyrighted).
- * Call this before uploading the file to storage.
- * On native, hash is skipped — server still checks title/artist metadata.
- */
-export async function checkCopyright(
-  file: File,
-  metadata: { title: string; artist: string }
-): Promise<CopyrightCheckResult> {
-  try {
-    const hash = await computeFileHash(file);
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) {
@@ -47,7 +25,7 @@ export async function checkCopyright(
       method: 'POST',
       headers,
       body: JSON.stringify({
-        hash,
+        hash: null,
         title: metadata.title?.trim() || '',
         artist: metadata.artist?.trim() || '',
       }),
@@ -62,10 +40,7 @@ export async function checkCopyright(
       return { blocked: true, reason: msg };
     }
     const data = (await res.json()) as { blocked: boolean; reason?: string };
-    return {
-      blocked: !!data.blocked,
-      reason: data.reason,
-    };
+    return { blocked: !!data.blocked, reason: data.reason };
   } catch {
     // Network failure or unexpected error — allow upload rather than silently blocking it
     return { blocked: false };

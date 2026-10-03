@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { appError } from '../utils/appError';
 
 export interface FollowRelationship {
   id: string;
@@ -20,7 +21,7 @@ async function ensureSession(): Promise<void> {
   let { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) {
     const { data } = await supabase.auth.refreshSession();
-    if (!data.session) throw new Error('Not authenticated');
+    if (!data.session) throw appError('errors.account.notSignedIn');
   }
 }
 
@@ -39,7 +40,7 @@ export class FollowService {
       
       if (userError) {
         console.error('Error checking user privacy:', userError);
-        throw new Error(`Failed to check user privacy: ${userError.message}`);
+        throw appError('errors.follow.privacy', userError);
       }
       
       if (user && user.is_private) {
@@ -56,11 +57,11 @@ export class FollowService {
         .maybeSingle();
 
       if (checkError && !checkError.message.includes('No rows found')) {
-        throw new Error(`Failed to check follow status: ${checkError.message}`);
+        throw appError('errors.follow.status', checkError);
       }
 
       if (existingFollow) {
-        throw new Error('Already following this user');
+        throw appError('errors.follow.already');
       }
 
       // Create follow relationship with followed_at timestamp
@@ -73,7 +74,7 @@ export class FollowService {
         }]);
 
       if (followError) {
-        throw new Error(`Failed to follow user: ${followError.message}`);
+        throw appError('errors.follow.follow', followError);
       }
 
       // Update follower counts
@@ -97,7 +98,7 @@ export class FollowService {
         .eq('following_id', followingId);
 
       if (unfollowError) {
-        throw new Error(`Failed to unfollow user: ${unfollowError.message}`);
+        throw appError('errors.follow.unfollow', unfollowError);
       }
 
       // Update follower counts
@@ -119,7 +120,7 @@ export class FollowService {
         .maybeSingle();
 
       if (error && !error.message.includes('No rows found')) {
-        throw new Error(`Failed to check follow status: ${error.message}`);
+        throw appError('errors.follow.status', error);
       }
 
       return !!data;
@@ -144,8 +145,8 @@ export class FollowService {
           : Promise.resolve(false),
       ]);
 
-      if (followersError) throw new Error(`Failed to get followers count: ${followersError.message}`);
-      if (followingError) throw new Error(`Failed to get following count: ${followingError.message}`);
+      if (followersError) throw appError('errors.follow.counts', followersError);
+      if (followingError) throw appError('errors.follow.counts', followingError);
 
       return {
         followers: followersCount || 0,
@@ -168,7 +169,7 @@ export class FollowService {
         .order('followed_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
-      if (error) throw new Error(`Failed to get followers: ${error.message}`);
+      if (error) throw appError('errors.follow.lists', error);
       if (!followers?.length) return [];
 
       const ids = followers.map((f: any) => f.follower_id);
@@ -177,7 +178,7 @@ export class FollowService {
         .select('id, username, avatar, role, artist_name, is_verified, is_verified_artist')
         .in('id', ids);
 
-      if (usersError) throw new Error(`Failed to get follower users: ${usersError.message}`);
+      if (usersError) throw appError('errors.follow.lists', usersError);
 
       const userMap = new Map((users || []).map((u: any) => [u.id, u]));
       return followers.map((f: any) => {
@@ -209,7 +210,7 @@ export class FollowService {
         .order('followed_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
-      if (error) throw new Error(`Failed to get following: ${error.message}`);
+      if (error) throw appError('errors.follow.lists', error);
       if (!following?.length) return [];
 
       const ids = following.map((f: any) => f.following_id);
@@ -218,7 +219,7 @@ export class FollowService {
         .select('id, username, avatar, role, artist_name, is_verified, is_verified_artist')
         .in('id', ids);
 
-      if (usersError) throw new Error(`Failed to get following users: ${usersError.message}`);
+      if (usersError) throw appError('errors.follow.lists', usersError);
 
       const userMap = new Map((users || []).map((u: any) => [u.id, u]));
       return following.map((f: any) => {
@@ -344,7 +345,7 @@ export class FollowService {
         .eq('following_id', request.target_id)
         .maybeSingle();
       if (checkError && !checkError.message.includes('No rows found')) {
-        throw new Error(`Failed to check follow status: ${checkError.message}`);
+        throw appError('errors.follow.status', checkError);
       }
       if (existingFollow) {
         // Already following, just remove the request
@@ -353,7 +354,7 @@ export class FollowService {
           .delete()
           .eq('id', requestId);
         if (deleteError) {
-          throw new Error(`Failed to remove request: ${deleteError.message}`);
+          throw appError('errors.follow.request', deleteError);
         }
         return;
       }
@@ -366,7 +367,7 @@ export class FollowService {
           following_id: request.target_id,
           followed_at: new Date().toISOString()
         }]);
-      if (followError) throw new Error(`Failed to create follow relationship: ${followError.message}`);
+      if (followError) throw appError('errors.follow.request', followError);
 
       // Update follower counts
       await this.updateFollowerCounts(request.requester_id, request.target_id, 1);
@@ -377,7 +378,7 @@ export class FollowService {
         .delete()
         .eq('id', requestId);
       if (deleteError) {
-        throw new Error(`Failed to remove request: ${deleteError.message}`);
+        throw appError('errors.follow.request', deleteError);
       }
     } catch (error) {
       console.error('Error accepting follow request:', error);
@@ -415,8 +416,8 @@ export class FollowService {
         supabase.from('users').update({ followers: Math.max(0, (followingUser?.followers || 0) + increment) }).eq('id', followingId),
       ]);
 
-      if (followingUpdateError) throw new Error(`Failed to update following count: ${followingUpdateError.message}`);
-      if (followersUpdateError) throw new Error(`Failed to update followers count: ${followersUpdateError.message}`);
+      if (followingUpdateError) throw appError('errors.follow.counts', followingUpdateError);
+      if (followersUpdateError) throw appError('errors.follow.counts', followersUpdateError);
     } catch (error) {
       console.error('Error updating follower counts:', error);
       throw error;

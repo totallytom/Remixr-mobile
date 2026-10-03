@@ -1,12 +1,102 @@
 import { create } from 'zustand';
-import { Audio } from 'expo-av';
+import { createAudioPlayer } from 'expo-audio';
+import { applyPlaybackAudioMode } from '../services/audio';
 import { AuthService } from '../services/authService';
 import { MusicService } from '../services/musicService';
 import { supabase } from '../services/supabase';
 import { storage, STORAGE_KEYS } from '../platform/storage';
+import {
+  configureRevenueCat,
+  identifyUser,
+  logOutRevenueCat,
+  getCustomerInfo,
+  resolveTier,
+  isRevenueCatAvailable,
+} from '../services/revenueCatService';
+import { BlockService } from '../services/blockService';
 
-// Module-level sound instance — expo-av objects are not serializable, so kept outside Zustand
-let _sound = null;
+// One app-wide player, reused for every track via replace(). expo-audio players are
+// native objects (not serializable), so it lives outside Zustand. Keeping a single
+// player also keeps it registered for the lock screen / Control Center controls.
+let _player = null;
+let _lockScreenActive = false;
+
+const clampVolume = (v) => Math.max(0, Math.min(1, v));
+
+function ensurePlayer() {
+  if (_player) return _player;
+  _player = createAudioPlayer(null, { updateInterval: 500 });
+  _player.addListener('playbackStatusUpdate', handlePlaybackStatus);
+  return _player;
+}
+
+// Title, artist and artwork on the lock screen and in Control Center, with
+// play/pause, scrubbing and ±10s skips (expo-audio has no next/previous buttons).
+function showOnLockScreen(audio, track) {
+  const metadata = {
+    title: track.title,
+    artist: track.artist,
+    albumTitle: track.album || undefined,
+    artworkUrl: track.cover || undefined,
+  };
+  try {
+    if (_lockScreenActive) {
+      audio.updateLockScreenMetadata(metadata);
+    } else {
+      audio.setActiveForLockScreen(true, metadata, { showSeekForward: true, showSeekBackward: true });
+      _lockScreenActive = true;
+    }
+  } catch (e) {
+    console.warn('[audio] lock screen controls failed:', e);
+  }
+}
+
+// Optional override for what happens when a track finishes (the DJ Room uses it
+// so the room's shared queue advances instead of the personal one). Return true
+// when handled; false falls through to repeat / queue / stop.
+let _trackEndHandler = null;
+export function setTrackEndHandler(fn) {
+  _trackEndHandler = fn;
+  return () => { if (_trackEndHandler === fn) _trackEndHandler = null; };
+}
+
+function handlePlaybackStatus(status) {
+  const { player } = useStore.getState();
+  if (!player.currentTrack) return;
+
+  useStore.setState((s) => ({
+    player: {
+      ...s.player,
+      currentTime: status.currentTime ?? 0,
+      progress: status.currentTime ?? 0,
+      isBuffering: status.isBuffering ?? false,
+      isPlaying: status.playing,
+      isLoaded: status.isLoaded,
+      duration: status.duration > 0 ? status.duration : s.player.duration,
+    },
+  }));
+
+  if (status.didJustFinish) {
+    const { player: p, skipToNext, playQueue } = useStore.getState();
+    try {
+      if (_trackEndHandler && _trackEndHandler(p.currentTrack)) {
+        useStore.setState((s) => ({ player: { ...s.player, isPlaying: false } }));
+        return;
+      }
+    } catch (e) {
+      console.warn('[audio] track end handler failed:', e);
+    }
+    if (p.repeatMode === 'one') {
+      _player?.seekTo(0).then(() => _player?.play()).catch(console.error);
+    } else if (p.queue.length > 0) {
+      skipToNext();
+    } else if (p.repeatMode === 'all' && p.originalQueue.length > 0) {
+      playQueue(p.originalQueue);
+    } else {
+      useStore.setState((s) => ({ player: { ...s.player, isPlaying: false } }));
+    }
+  }
+}
 
 function _shuffleArray(arr) {
   const a = [...arr];
@@ -50,6 +140,9 @@ export const useStore = create((set, get) => ({
   sidebarOpen: true,
   currentView: 'home',
   isSettingsOpen: false,
+  // True while a DM or group conversation is open on screen: MainTabs hides the
+  // tab bar and mini player so the composer can sit directly on the keyboard.
+  isConversationOpen: false,
   settingsInitialTab: 'account',
 
   theme: {
@@ -86,6 +179,7 @@ export const useStore = create((set, get) => ({
     playlists: s.playlists.filter(p => p.id !== playlistId)
   })),
   setSettingsOpen: (isSettingsOpen) => set({ isSettingsOpen }),
+  setConversationOpen: (isConversationOpen) => set({ isConversationOpen }),
   setSettingsInitialTab: (settingsInitialTab) => set({ settingsInitialTab }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   triggerPlayEvent: () => set((s) => ({ playEvent: s.playEvent + 1 })),
@@ -114,17 +208,7 @@ export const useStore = create((set, get) => ({
   // AUDIO INIT
   // --------------------
   initializeAudio: async () => {
-    try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        staysActiveInBackground: true,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-      });
-    } catch (e) {
-      console.warn('[audio] setAudioModeAsync failed:', e);
-    }
+    await applyPlaybackAudioMode();
   },
 
   // --------------------
@@ -134,22 +218,17 @@ export const useStore = create((set, get) => ({
     if (!track?.audioUrl) return;
 
     const { player } = get();
-    const isCurrentTrack = player.currentTrack?.id === track.id;
+    const audio = ensurePlayer();
 
     set((s) => ({ player: { ...s.player, visible: true } }));
 
-    if (isCurrentTrack && _sound) {
-      // Same track already loaded — just resume
-      try {
-        await _sound.playAsync();
-      } catch (e) {
-        console.error('[audio] playAsync failed:', e);
-      }
+    if (player.currentTrack?.id === track.id) {
+      audio.play();
       return;
     }
 
     // New track: push current to history
-    if (player.currentTrack && player.currentTrack.id !== track.id) {
+    if (player.currentTrack) {
       set((s) => ({
         player: {
           ...s.player,
@@ -167,57 +246,16 @@ export const useStore = create((set, get) => ({
         duration: 0,
         isLoaded: false,
         isBuffering: true,
+        // Flips true once the player's status update confirms playback started.
         isPlaying: false,
       },
     }));
 
     try {
-      // Unload previous sound
-      if (_sound) {
-        await _sound.unloadAsync().catch(() => {});
-        _sound = null;
-      }
-
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: track.audioUrl },
-        {
-          shouldPlay: true,
-          volume: get().player.volume,
-          progressUpdateIntervalMillis: 500,
-        },
-      );
-      _sound = sound;
-
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (!status.isLoaded) return;
-
-        set((s) => ({
-          player: {
-            ...s.player,
-            currentTime: (status.positionMillis ?? 0) / 1000,
-            progress: (status.positionMillis ?? 0) / 1000,
-            isBuffering: status.isBuffering ?? false,
-            isPlaying: status.isPlaying,
-            isLoaded: true,
-            duration: status.durationMillis != null
-              ? status.durationMillis / 1000
-              : s.player.duration,
-          },
-        }));
-
-        if (status.didJustFinish) {
-          const { player: p } = get();
-          if (p.repeatMode === 'one') {
-            _sound?.replayAsync().catch(console.error);
-          } else if (p.queue.length > 0) {
-            get().skipToNext();
-          } else if (p.repeatMode === 'all' && p.originalQueue.length > 0) {
-            get().playQueue(p.originalQueue);
-          } else {
-            set((s) => ({ player: { ...s.player, isPlaying: false } }));
-          }
-        }
-      });
+      audio.replace({ uri: track.audioUrl });
+      audio.volume = clampVolume(get().player.volume);
+      audio.play();
+      showOnLockScreen(audio, track);
     } catch (e) {
       console.error('[audio] load/play failed:', e);
       set((s) => ({ player: { ...s.player, isBuffering: false } }));
@@ -225,23 +263,19 @@ export const useStore = create((set, get) => ({
   },
 
   pauseTrack: async () => {
-    if (_sound) {
-      try {
-        await _sound.pauseAsync();
-        set((s) => ({ player: { ...s.player, isPlaying: false } }));
-      } catch (e) {
-        console.error('[audio] pauseAsync failed:', e);
-      }
-    }
+    if (!_player) return;
+    _player.pause();
+    set((s) => ({ player: { ...s.player, isPlaying: false } }));
   },
 
   dismissPlayer: async () => {
-    if (_sound) {
+    if (_player) {
       try {
-        await _sound.stopAsync();
-        await _sound.unloadAsync();
+        _player.pause();
+        _player.clearLockScreenControls();
+        _player.replace(null);
       } catch (e) {}
-      _sound = null;
+      _lockScreenActive = false;
     }
     set((s) => ({
       player: {
@@ -260,13 +294,7 @@ export const useStore = create((set, get) => ({
   },
 
   resumeTrack: async () => {
-    if (_sound) {
-      try {
-        await _sound.playAsync();
-      } catch (e) {
-        console.error('[audio] playAsync (resume) failed:', e);
-      }
-    }
+    _player?.play();
   },
 
   skipToNext: async () => {
@@ -280,17 +308,17 @@ export const useStore = create((set, get) => ({
   skipToPrevious: async () => {
     const { player } = get();
     // If more than 3 seconds in, restart the current track
-    if (player.currentTime > 3 && _sound) {
+    if (player.currentTime > 3 && _player) {
       try {
-        await _sound.setPositionAsync(0);
+        await _player.seekTo(0);
         set((s) => ({ player: { ...s.player, currentTime: 0, progress: 0 } }));
       } catch (e) {
-        console.error('[audio] setPositionAsync failed:', e);
+        console.error('[audio] seekTo(0) failed:', e);
       }
       return;
     }
     if (!player.trackHistory?.length) {
-      if (_sound) await _sound.setPositionAsync(0).catch(() => {});
+      if (_player) await _player.seekTo(0).catch(() => {});
       set((s) => ({ player: { ...s.player, currentTime: 0, progress: 0 } }));
       return;
     }
@@ -307,23 +335,18 @@ export const useStore = create((set, get) => ({
   },
 
   seekTo: async (time) => {
-    if (_sound) {
-      try {
-        await _sound.setPositionAsync(Math.round(time * 1000));
-        set((s) => ({ player: { ...s.player, currentTime: time, progress: time } }));
-      } catch (e) {
-        console.error('[audio] seekTo failed:', e);
-      }
+    if (!_player) return;
+    try {
+      await _player.seekTo(time);
+      set((s) => ({ player: { ...s.player, currentTime: time, progress: time } }));
+    } catch (e) {
+      console.error('[audio] seekTo failed:', e);
     }
   },
 
   setVolume: async (volume) => {
     set((s) => ({ player: { ...s.player, volume } }));
-    try {
-      await _sound?.setVolumeAsync(Math.max(0, Math.min(1, volume)));
-    } catch (e) {
-      console.error('[audio] setVolumeAsync failed:', e);
-    }
+    if (_player) _player.volume = clampVolume(volume);
   },
 
   toggleRepeat: () => {
@@ -466,11 +489,61 @@ export const useStore = create((set, get) => ({
       if (incomingId !== null && incomingId === lastUserId) return;
       lastUserId = incomingId;
       set({ user, isAuthenticated: !!user, isAuthInitialized: true });
+
+      if (user?.id) {
+        get().syncRevenueCatIdentity(user.id);
+        BlockService.loadHiddenUserIds();
+      } else {
+        logOutRevenueCat().catch(() => {});
+        BlockService.clearHiddenUserIds();
+      }
     });
 
     return () => {
       data?.subscription?.unsubscribe();
     };
+  },
+
+  // --------------------
+  // REVENUECAT (subscriptions — Fan/Artist IAP tiers; Stripe is ticket-only)
+  // --------------------
+  initializeRevenueCat: () => {
+    try {
+      configureRevenueCat();
+    } catch (e) {
+      console.error('[revenueCat] configure failed:', e);
+    }
+  },
+
+  // Links the signed-in user to RevenueCat and pulls their current entitlement
+  // immediately (covers renewals/cancellations that happened while the app was
+  // closed, since there's no backend webhook syncing this yet — see revenueCatService.ts).
+  syncRevenueCatIdentity: async (userId) => {
+    if (!isRevenueCatAvailable) return;
+    try {
+      const customerInfo = await identifyUser(userId);
+      await get().applyRevenueCatEntitlement(customerInfo);
+    } catch (e) {
+      console.error('[revenueCat] identify/sync failed:', e);
+    }
+  },
+
+  // Called after identify, and should also be called right after a purchase or
+  // restore completes (with the CustomerInfo those calls return) so the UI
+  // unlocks immediately rather than waiting for the next app launch.
+  // Optimistic, local-only upgrade so features unlock the moment a purchase or
+  // restore completes. The database tier is owned by the server: the
+  // revenuecat-webhook Edge Function records the purchase and
+  // recompute_subscription_tier() derives users.subscription_tier (clients can't
+  // write it). Never downgrades locally — RevenueCat doesn't know about website
+  // or complimentary access; the server-derived tier on next load is the truth.
+  applyRevenueCatEntitlement: async (customerInfo) => {
+    const { user } = get();
+    if (!user) return;
+    const rank = { free: 0, fan: 1, artist: 2 };
+    const tier = resolveTier(customerInfo);
+    if ((rank[tier] ?? 0) <= (rank[user.subscriptionTier] ?? 0)) return;
+    set({ user: { ...user, subscriptionTier: tier } });
   },
 
   updateProfile: async (updatesOrUser) => {

@@ -15,6 +15,8 @@ import { Controller, useForm } from 'react-hook-form';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import { localizeAuthError } from '../../utils/authErrors';
 import { Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
 import { AuthService } from '../../services/authService';
 import { supabase } from '../../services/supabase';
@@ -51,6 +53,7 @@ function isRecoveryUrl(url: string): boolean {
 
 const ResetPasswordScreen: React.FC = () => {
   const navigation = useNavigation<AuthNav>();
+  const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -128,7 +131,7 @@ const ResetPasswordScreen: React.FC = () => {
 
   const onSubmit = async (data: ResetPasswordForm) => {
     if (data.password !== data.confirmPassword) {
-      setError('Passwords do not match');
+      setError(t('auth.validation.passwordsMismatch'));
       return;
     }
 
@@ -142,7 +145,7 @@ const ResetPasswordScreen: React.FC = () => {
         navigation.navigate('Login');
       }, 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reset password');
+      setError(localizeAuthError(err, 'auth.reset.failed'));
     } finally {
       setIsLoading(false);
     }
@@ -162,29 +165,26 @@ const ResetPasswordScreen: React.FC = () => {
           <View style={styles.card}>
             {/* Header */}
             <View style={styles.header}>
-              <Text style={styles.title}>Reset Password</Text>
+              <Text style={styles.title}>{t('auth.reset.title')}</Text>
               <Text style={styles.subtitle}>
                 {hasRecoverySession === null
-                  ? 'Checking your reset link…'
+                  ? t('auth.reset.checking')
                   : hasRecoverySession
-                  ? 'Enter your new password below'
-                  : 'Use the link from your email to set a new password.'}
+                  ? t('auth.reset.enterNew')
+                  : t('auth.reset.useEmailLink')}
               </Text>
             </View>
 
             {/* No valid recovery link */}
             {hasRecoverySession === false && (
               <View style={styles.infoBox}>
-                <Text style={styles.infoText}>
-                  This screen is only valid when opened from the "Reset your password" email. The
-                  link may have expired or already been used.
-                </Text>
+                <Text style={styles.infoText}>{t('auth.reset.invalidLink')}</Text>
                 <TouchableOpacity
                   style={styles.backLink}
                   onPress={() => navigation.navigate('Login')}
                 >
                   <ArrowLeft size={16} color={PURPLE_LIGHT} />
-                  <Text style={styles.backLinkText}>Back to login to request a new link</Text>
+                  <Text style={styles.backLinkText}>{t('auth.reset.backRequestNew')}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -199,9 +199,7 @@ const ResetPasswordScreen: React.FC = () => {
             {/* Success */}
             {success && (
               <View style={styles.successBox}>
-                <Text style={styles.successText}>
-                  Password reset successful! Redirecting to login…
-                </Text>
+                <Text style={styles.successText}>{t('auth.reset.success')}</Text>
               </View>
             )}
 
@@ -210,23 +208,20 @@ const ResetPasswordScreen: React.FC = () => {
               <View style={styles.form}>
                 {/* New Password */}
                 <View style={styles.field}>
-                  <Text style={styles.label}>New Password</Text>
+                  <Text style={styles.label}>{t('auth.reset.newPassword')}</Text>
                   <View style={styles.inputRow}>
                     <Lock size={20} color={MUTED} style={styles.inputIcon} />
                     <Controller
                       control={control}
                       name="password"
                       rules={{
-                        required: 'Password is required',
-                        minLength: {
-                          value: 6,
-                          message: 'Password must be at least 6 characters',
-                        },
+                        required: t('auth.validation.passwordRequired'),
+                        minLength: { value: 6, message: t('auth.validation.passwordMin') },
                       }}
                       render={({ field: { onChange, onBlur, value } }) => (
                         <TextInput
                           style={[styles.input, styles.inputWithAction]}
-                          placeholder="Enter new password"
+                          placeholder={t('auth.reset.newPasswordPlaceholder')}
                           placeholderTextColor={MUTED}
                           secureTextEntry={!showPassword}
                           onChangeText={onChange}
@@ -253,21 +248,21 @@ const ResetPasswordScreen: React.FC = () => {
 
                 {/* Confirm Password */}
                 <View style={styles.field}>
-                  <Text style={styles.label}>Confirm New Password</Text>
+                  <Text style={styles.label}>{t('auth.reset.confirmNew')}</Text>
                   <View style={styles.inputRow}>
                     <Lock size={20} color={MUTED} style={styles.inputIcon} />
                     <Controller
                       control={control}
                       name="confirmPassword"
                       rules={{
-                        required: 'Please confirm your password',
+                        required: t('auth.validation.confirmRequired'),
                         validate: value =>
-                          value === getValues('password') || 'Passwords do not match',
+                          value === getValues('password') || t('auth.validation.passwordsMismatch'),
                       }}
                       render={({ field: { onChange, onBlur, value } }) => (
                         <TextInput
                           style={[styles.input, styles.inputWithAction]}
-                          placeholder="Confirm new password"
+                          placeholder={t('auth.reset.confirmNewPlaceholder')}
                           placeholderTextColor={MUTED}
                           secureTextEntry={!showConfirmPassword}
                           onChangeText={onChange}
@@ -303,16 +298,16 @@ const ResetPasswordScreen: React.FC = () => {
                 >
                   {hasRecoverySession === null ? (
                     <View style={styles.buttonInner}>
-                      <ActivityIndicator size="small" color="#fff" style={styles.spinner} />
-                      <Text style={styles.primaryButtonText}>Checking link…</Text>
+                      <ActivityIndicator size="small" color="#000000" style={styles.spinner} />
+                      <Text style={styles.primaryButtonText}>{t('auth.reset.checkingLink')}</Text>
                     </View>
                   ) : isLoading ? (
                     <View style={styles.buttonInner}>
-                      <ActivityIndicator size="small" color="#fff" style={styles.spinner} />
-                      <Text style={styles.primaryButtonText}>Resetting Password…</Text>
+                      <ActivityIndicator size="small" color="#000000" style={styles.spinner} />
+                      <Text style={styles.primaryButtonText}>{t('auth.reset.resetting')}</Text>
                     </View>
                   ) : (
-                    <Text style={styles.primaryButtonText}>Reset Password</Text>
+                    <Text style={styles.primaryButtonText}>{t('auth.reset.submit')}</Text>
                   )}
                 </TouchableOpacity>
 
@@ -321,7 +316,7 @@ const ResetPasswordScreen: React.FC = () => {
                   onPress={() => navigation.navigate('Login')}
                 >
                   <ArrowLeft size={16} color={MUTED} />
-                  <Text style={styles.mutedLinkText}>Back to login</Text>
+                  <Text style={styles.mutedLinkText}>{t('auth.common.backToLogin')}</Text>
                 </TouchableOpacity>
               </View>
             )}

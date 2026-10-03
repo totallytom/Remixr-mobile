@@ -15,6 +15,9 @@ import { useStore, Track } from '../../store/useStore';
 import { MusicService } from '../../services/musicService';
 import { AlbumService, Album } from '../../services/albumService';
 import { HomeStackParamList } from '../../navigation/stacks/HomeStack';
+import { appLocale } from '../../utils/dateLocale';
+import { useTranslation } from 'react-i18next';
+import { genreLabel } from '../../utils/genres';
 
 type AlbumTracksRoute = RouteProp<HomeStackParamList, 'AlbumTracks'>;
 
@@ -30,10 +33,11 @@ function formatDate(date: Date | string | undefined): string {
   if (!date) return '—';
   const d = date instanceof Date ? date : new Date(date);
   if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString(appLocale(), { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 const AlbumTracksScreen: React.FC = () => {
+  const { t } = useTranslation();
   const route = useRoute<AlbumTracksRoute>();
   const navigation = useNavigation();
   const { albumId } = route.params;
@@ -76,8 +80,8 @@ const AlbumTracksScreen: React.FC = () => {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#7c3aed" />
-          <Text style={styles.loadingText}>Loading album…</Text>
+          <ActivityIndicator size="large" color="#000000" />
+          <Text style={styles.loadingText}>{t('album.loading')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -87,9 +91,9 @@ const AlbumTracksScreen: React.FC = () => {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centered}>
-          <Text style={styles.notFoundTitle}>Album not found</Text>
+          <Text style={styles.notFoundTitle}>{t('album.notFound')}</Text>
           <TouchableOpacity style={styles.goBackButton} onPress={() => navigation.goBack()}>
-            <Text style={styles.goBackText}>Go back</Text>
+            <Text style={styles.goBackText}>{t('album.goBack')}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -125,7 +129,7 @@ const AlbumTracksScreen: React.FC = () => {
         renderItem={renderTrack}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>No tracks in this album yet.</Text>
+          <Text style={styles.emptyText}>{t('album.empty')}</Text>
         }
         ListHeaderComponent={
           <>
@@ -141,11 +145,11 @@ const AlbumTracksScreen: React.FC = () => {
                 resizeMode="cover"
               />
 
-              <Text style={styles.albumType}>Album</Text>
+              <Text style={styles.albumType}>{t('album.type')}</Text>
               <Text style={styles.albumTitle}>{album.title}</Text>
               <Text style={styles.albumArtist}>{album.artist}</Text>
               <View style={styles.albumMeta}>
-                <Text style={styles.albumMetaText}>{album.genre}</Text>
+                <Text style={styles.albumMetaText}>{genreLabel(album.genre)}</Text>
                 <Text style={styles.albumMetaDot}>·</Text>
                 <Text style={styles.albumMetaText}>
                   {tracks.length} {tracks.length === 1 ? 'track' : 'tracks'}
@@ -165,7 +169,7 @@ const AlbumTracksScreen: React.FC = () => {
 
               {tracks.length > 1 && (
                 <TouchableOpacity onPress={() => playQueue(tracks)}>
-                  <Text style={styles.playAllText}>Play all ({tracks.length} tracks)</Text>
+                  <Text style={styles.playAllText}>{t('album.playAll', { count: tracks.length })}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -173,7 +177,7 @@ const AlbumTracksScreen: React.FC = () => {
             {/* Column header */}
             <View style={styles.colHeader}>
               <Text style={[styles.colHeaderText, styles.colIndex]}>#</Text>
-              <Text style={[styles.colHeaderText, styles.colTitle]}>Title</Text>
+              <Text style={[styles.colHeaderText, styles.colTitle]}>{t('album.title')}</Text>
               <Clock size={14} color="#6b7280" />
             </View>
           </>
@@ -192,7 +196,7 @@ const PURPLE = '#7c3aed';
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: DARK },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  loadingText: { color: MUTED, fontSize: 14, marginTop: 8 },
+  loadingText: { color: '#000000', fontSize: 14, marginTop: 8 },
   notFoundTitle: { fontSize: 22, fontWeight: '700', color: '#fff' },
   goBackButton: {
     marginTop: 8, paddingHorizontal: 20, paddingVertical: 10,

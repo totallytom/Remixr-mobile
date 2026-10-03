@@ -1,5 +1,7 @@
 import { supabase } from './supabase';
 import { Chat, Message, User } from '../store/useStore';
+import { withoutHiddenUsers } from './blockService';
+import { appError } from '../utils/appError';
 
 export interface CreateMessageData {
   senderId: string;
@@ -37,8 +39,11 @@ export class ChatService {
       p_user_id: userId,
     });
 
+    // Conversations with blocked users disappear from the list.
+    const otherId = (chat: Chat) => chat.participants?.find((p) => p.id !== userId)?.id;
+
     if (!rpcError && rpcData) {
-      return (rpcData as any[]).map((row: any) => this.rpcRowToChat(userId, row));
+      return withoutHiddenUsers((rpcData as any[]).map((row: any) => this.rpcRowToChat(userId, row)), otherId);
     }
 
     // Fallback: client-side dedup (original approach, still limited to 40 rows)
@@ -75,39 +80,49 @@ export class ChatService {
     chatMap.forEach((msg: any, key: string) => {
       chats.push(this.messageRowToChat(userId, msg, key));
     });
-    return chats;
+    return withoutHiddenUsers(chats, otherId);
   }
 
-  // Get messages between two users
-  static async getChatMessages(userId1: string, userId2: string, limit = 50): Promise<Message[]> {
-    if (!userId1 || !userId2) throw new Error('Invalid user IDs provided');
+  /**
+   * One page of messages between two users, oldest first. Pass `before` (an ISO
+   * timestamp, e.g. the oldest loaded message's) to load the page before it.
+   * `hasMore` is true when an older page may exist.
+   */
+  static async getChatMessages(
+    userId1: string,
+    userId2: string,
+    options: { limit?: number; before?: string } = {},
+  ): Promise<{ messages: Message[]; hasMore: boolean }> {
+    const limit = options.limit ?? 50;
+    if (!userId1 || !userId2) throw appError('errors.chat.invalid');
     if (!this.isValidUUID(userId1) || !this.isValidUUID(userId2)) {
-      throw new Error('Invalid UUID format provided');
+      throw appError('errors.chat.invalid');
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('messages')
       .select(`
         *,
-        sender:users!messages_sender_id_fkey (id, username, avatar, artist_name),
-        receiver:users!messages_receiver_id_fkey (id, username, avatar, artist_name),
         track:tracks(id, title, artist, cover, audio_url, duration, genre)
       `)
       .or(
         `and(sender_id.eq.${userId1},receiver_id.eq.${userId2}),` +
         `and(sender_id.eq.${userId2},receiver_id.eq.${userId1})`
-      )
-      .order('created_at', { ascending: false })
-      .limit(limit);
+      );
+    if (options.before) query = query.lt('created_at', options.before);
+    const { data, error } = await query.order('created_at', { ascending: false }).limit(limit);
 
     if (error) throw new Error(error.message);
-    return data.reverse().map((msg) => this.transformMessage(msg));
+    return {
+      messages: data.reverse().map((msg) => this.transformMessage(msg)),
+      hasMore: data.length === limit,
+    };
   }
 
   // Send a message — returns the created Message so callers can append it locally
   static async sendMessage(data: CreateMessageData): Promise<Message> {
     if (!this.isValidUUID(data.senderId) || !this.isValidUUID(data.receiverId)) {
-      throw new Error('Invalid UUID format provided');
+      throw appError('errors.chat.invalid');
     }
 
     const insert: any = {
@@ -128,14 +143,12 @@ export class ChatService {
       .insert(insert)
       .select(`
         *,
-        sender:users!messages_sender_id_fkey (id, username, avatar, artist_name),
-        receiver:users!messages_receiver_id_fkey (id, username, avatar, artist_name),
         track:tracks(id, title, artist, cover, audio_url, duration, genre)
       `)
       .maybeSingle();
 
     if (error) throw new Error(error.message);
-    if (!messageData) throw new Error('Failed to create message');
+    if (!messageData) throw appError('errors.chat.send');
 
     return this.transformMessage(messageData);
   }
@@ -153,7 +166,7 @@ export class ChatService {
   // Update a message
   static async updateMessage(messageId: string, userId: string, newContent: string): Promise<Message> {
     if (!this.isValidUUID(messageId) || !this.isValidUUID(userId)) {
-      throw new Error('Invalid UUID format provided');
+      throw appError('errors.chat.invalid');
     }
 
     const { data: messageData, error } = await supabase
@@ -163,14 +176,12 @@ export class ChatService {
       .eq('sender_id', userId)
       .select(`
         *,
-        sender:users!messages_sender_id_fkey (id, username, avatar, artist_name),
-        receiver:users!messages_receiver_id_fkey (id, username, avatar, artist_name),
         track:tracks(id, title, artist, cover, audio_url, duration, genre)
       `)
       .maybeSingle();
 
     if (error) throw new Error(error.message);
-    if (!messageData) throw new Error('Message not found or no permission to edit');
+    if (!messageData) throw appError('errors.chat.editDenied');
 
     return this.transformMessage(messageData);
   }
@@ -212,17 +223,18 @@ export class ChatService {
           const row = payload.new as any;
           // Only process messages from the other participant in this chat
           if (row.sender_id !== otherUserId) return;
-          const { data, error } = await supabase
-            .from('messages')
-            .select(`
-              *,
-              sender:users!messages_sender_id_fkey (id, username, avatar, artist_name),
-              receiver:users!messages_receiver_id_fkey (id, username, avatar, artist_name),
-              track:tracks(id, title, artist, cover, audio_url, duration, genre)
-            `)
-            .eq('id', row.id)
+          // The realtime row already has everything a text message needs; only a
+          // shared track needs one extra lookup.
+          if (!row.track_id) {
+            callback(this.transformMessage(row));
+            return;
+          }
+          const { data: track } = await supabase
+            .from('tracks')
+            .select('id, title, artist, cover, audio_url, duration, genre')
+            .eq('id', row.track_id)
             .maybeSingle();
-          if (!error && data) callback(this.transformMessage(data));
+          callback(this.transformMessage({ ...row, track: track ?? undefined }));
         }
       )
       .subscribe();
@@ -237,7 +249,7 @@ export class ChatService {
    */
   static subscribeToChatUpdates(userId: string, callback: (chat: Chat) => void) {
     return supabase
-      .channel('chat_updates')
+      .channel(`chat_updates_${userId}`)
       .on(
         'postgres_changes',
         {
@@ -336,30 +348,38 @@ export class ChatService {
   }
 
   // Search users for starting new chats
-  static async searchUsers(query: string, currentUserId: string, limit?: number): Promise<User[]> {
+  /**
+   * Public profile search. Never selects email: results are shown to other
+   * users (and to guests). Pass the viewer's id to leave them out of results.
+   */
+  static async searchUsers(query: string, currentUserId?: string | null, limit?: number): Promise<User[]> {
     const defaultLimit = limit || (query ? 10 : 20);
-    const { data, error } = await supabase
+    let request = supabase
       .from('users')
-      .select('id, username, email, avatar, followers, following, role, is_verified, is_verified_artist, artist_name, bio, genres')
-      .neq('id', currentUserId)
+      .select('id, username, avatar, followers, following, role, is_verified, is_verified_artist, is_private, artist_name, bio, genres, external_links')
       .ilike('username', `%${query}%`)
       .limit(defaultLimit);
+    // '' isn't a valid uuid, so only filter when there is a viewer.
+    if (currentUserId) request = request.neq('id', currentUserId);
+    const { data, error } = await request;
 
     if (error) throw new Error(error.message);
 
-    return data.map((u) => ({
+    return withoutHiddenUsers(data, (u) => u.id).map((u) => ({
       id: u.id,
       username: u.username,
-      email: u.email,
+      email: '',
       avatar: u.avatar,
       followers: u.followers,
       following: u.following,
       role: u.role,
       isVerified: u.is_verified,
+      isPrivate: u.is_private ?? false,
       isVerifiedArtist: u.is_verified_artist ?? false,
       artistName: u.artist_name,
       bio: u.bio,
       genres: u.genres,
+      externalLinks: u.external_links ?? [],
     }));
   }
 
@@ -375,11 +395,12 @@ export class ChatService {
       isVerified: data.is_verified as boolean,
       isPrivate: data.is_private as boolean,
       isVerifiedArtist: (data.is_verified_artist as boolean) ?? false,
+      isAdmin: (data.is_admin as boolean) ?? false,
       artistName: data.artist_name as string | undefined,
       bio: data.bio as string | undefined,
       genres: data.genres as string[] | undefined,
       externalLinks: (data.external_links as string[]) ?? [],
-      subscriptionTier: (data.subscription_tier as 'free' | 'pro') ?? 'free',
+      subscriptionTier: (data.subscription_tier as 'free' | 'fan' | 'artist') ?? 'free',
       bannerUrl: data.banner_url as string | undefined,
       vanityUrl: data.vanity_url as string | undefined,
     };
@@ -484,8 +505,8 @@ export class ChatService {
     return {
       id: key,
       participants: [
-        { id: userId, username: '', email: 'unknown@remix.app', avatar: '', followers: 0, following: 0, role: 'consumer', isVerified: false },
-        { id: otherUserId, username: otherInfo?.username || '', email: 'unknown@remix.app', avatar: otherInfo?.avatar || '', followers: 0, following: 0, role: 'consumer', isVerified: false },
+        { id: userId, username: '', email: 'unknown@remix.app', avatar: '', followers: 0, following: 0, role: 'consumer', isVerified: false, isPrivate: false, externalLinks: [] },
+        { id: otherUserId, username: otherInfo?.username || '', email: 'unknown@remix.app', avatar: otherInfo?.avatar || '', followers: 0, following: 0, role: 'consumer', isVerified: false, isPrivate: false, externalLinks: [] },
       ],
       messages: [],
       lastMessage: this.transformMessage(msgRow),
@@ -496,8 +517,8 @@ export class ChatService {
     return {
       id: this.chatKey(userId, row.other_user_id),
       participants: [
-        { id: userId, username: '', email: 'unknown@remix.app', avatar: '', followers: 0, following: 0, role: 'consumer', isVerified: false },
-        { id: row.other_user_id, username: row.other_username || '', email: 'unknown@remix.app', avatar: row.other_avatar || '', followers: 0, following: 0, role: 'consumer', isVerified: false },
+        { id: userId, username: '', email: 'unknown@remix.app', avatar: '', followers: 0, following: 0, role: 'consumer', isVerified: false, isPrivate: false, externalLinks: [] },
+        { id: row.other_user_id, username: row.other_username || '', email: 'unknown@remix.app', avatar: row.other_avatar || '', followers: 0, following: 0, role: 'consumer', isVerified: false, isPrivate: false, externalLinks: [] },
       ],
       messages: [],
       lastMessage: {
@@ -514,8 +535,8 @@ export class ChatService {
     return {
       id: this.chatKey(userId, otherUserId),
       participants: [
-        { id: userId, username: '', email: 'unknown@remix.app', avatar: '', followers: 0, following: 0, role: 'consumer', isVerified: false },
-        { id: otherUserId, username: otherUser?.username || '', email: 'unknown@remix.app', avatar: otherUser?.avatar || '', followers: 0, following: 0, role: 'consumer', isVerified: false },
+        { id: userId, username: '', email: 'unknown@remix.app', avatar: '', followers: 0, following: 0, role: 'consumer', isVerified: false, isPrivate: false, externalLinks: [] },
+        { id: otherUserId, username: otherUser?.username || '', email: 'unknown@remix.app', avatar: otherUser?.avatar || '', followers: 0, following: 0, role: 'consumer', isVerified: false, isPrivate: false, externalLinks: [] },
       ],
       messages: [],
       lastMessage: undefined,

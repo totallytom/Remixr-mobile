@@ -2,6 +2,8 @@ import { supabase } from './supabase';
 import { Track, Playlist, Comment } from '../store/useStore';
 import { BoostService } from './boostService';
 import { safeLog } from '../utils/debugUtils';
+import { withoutHiddenUsers } from './blockService';
+import { appError, toAppError } from '../utils/appError';
 
 export interface ChallengeResponse {
   id: string;
@@ -117,7 +119,7 @@ export class MusicService {
 
       return this.transformTrack(trackData);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to create track');
+      throw toAppError(error, 'errors.generic.track');
     }
   }
 
@@ -143,7 +145,7 @@ export class MusicService {
 
       return data.map(track => this.transformTrack(track));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch tracks');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -165,12 +167,12 @@ export class MusicService {
       if (error) throw new Error(error.message);
 
       if (!data) {
-        throw new Error('Track not found');
+        throw appError('errors.music.trackNotFound');
       }
 
       return this.transformTrack(data);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch track');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -227,7 +229,7 @@ export class MusicService {
       if (error) throw new Error(error.message);
       return this.transformTrack(data);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to create remix');
+      throw toAppError(error, 'errors.generic.track');
     }
   }
 
@@ -249,7 +251,7 @@ export class MusicService {
       return tracks;
     } catch (error) {
       console.error('Error in getUserTracks:', error);
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch user tracks');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -266,7 +268,7 @@ export class MusicService {
       if (fetchError) throw new Error(fetchError.message);
 
       if (!track) {
-        throw new Error('Track not found or you do not have permission to delete it');
+        throw appError('errors.music.trackDeleteDenied');
       }
 
       // Delete from database
@@ -281,7 +283,7 @@ export class MusicService {
       // Delete files from storage (optional - you might want to keep them)
       // This would require parsing the URLs to get the file paths
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to delete track');
+      throw toAppError(error, 'errors.generic.delete');
     }
   }
 
@@ -350,7 +352,7 @@ export class MusicService {
 
       return this.transformPlaylist(playlistData);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to create playlist');
+      throw toAppError(error, 'errors.generic.playlist');
     }
   }
 
@@ -380,7 +382,7 @@ export class MusicService {
 
       return data.map(playlist => this.transformPlaylist(playlist));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch playlists');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -401,7 +403,7 @@ export class MusicService {
       if (error) throw new Error(error.message);
 
       if (!data) {
-        throw new Error('Playlist not found');
+        throw appError('errors.music.playlistNotFound');
       }
 
       const playlist = this.transformPlaylist(data);
@@ -422,7 +424,7 @@ export class MusicService {
 
       return playlist;
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch playlist');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -453,7 +455,7 @@ export class MusicService {
 
       return playlists.map(p => ({ ...p, tracks: tracksByPlaylistId.get(p.id) || [] }));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch playlists with tracks');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -480,7 +482,7 @@ export class MusicService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to add track to playlist');
+      throw toAppError(error, 'errors.generic.playlist');
     }
   }
 
@@ -494,7 +496,7 @@ export class MusicService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to remove track from playlist');
+      throw toAppError(error, 'errors.generic.playlist');
     }
   }
 
@@ -515,11 +517,11 @@ export class MusicService {
       }
 
       if (!playlist) {
-        throw new Error('Playlist not found');
+        throw appError('errors.music.playlistNotFound');
       }
 
       if (playlist.created_by !== userId) {
-        throw new Error('You do not have permission to delete this playlist');
+        throw appError('errors.music.playlistDeleteDenied');
       }
 
       // Delete the playlist (cascade will handle playlist_tracks)
@@ -537,7 +539,7 @@ export class MusicService {
       console.log('Playlist deleted successfully');
     } catch (error) {
       console.error('Failed to delete playlist:', error);
-      throw new Error(error instanceof Error ? error.message : 'Failed to delete playlist');
+      throw toAppError(error, 'errors.generic.playlist');
     }
   }
 
@@ -562,7 +564,7 @@ export class MusicService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to update playlist');
+      throw toAppError(error, 'errors.generic.playlist');
     }
   }
 
@@ -589,7 +591,7 @@ export class MusicService {
 
       if (insertError) throw new Error(insertError.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to reorder playlist tracks');
+      throw toAppError(error, 'errors.generic.playlist');
     }
   }
 
@@ -626,12 +628,12 @@ export class MusicService {
       if (error) throw new Error(error.message);
 
       if (!data) {
-        throw new Error('Failed to create comment');
+        throw appError('errors.music.comment');
       }
 
       return this.transformComment(data);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to add comment');
+      throw toAppError(error, 'errors.generic.comment');
     }
   }
 
@@ -651,9 +653,9 @@ export class MusicService {
 
       if (error) throw new Error(error.message);
 
-      return data.map(comment => this.transformComment(comment));
+      return withoutHiddenUsers(data, (c: any) => c.user_id).map(comment => this.transformComment(comment));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch comments');
+      throw toAppError(error, 'errors.generic.comment');
     }
   }
 
@@ -668,7 +670,7 @@ export class MusicService {
       if (fetchError) throw new Error(fetchError.message);
 
       if (!comment) {
-        throw new Error('Comment not found');
+        throw appError('errors.music.commentNotFound');
       }
 
       const likedBy = comment.liked_by || [];
@@ -688,7 +690,7 @@ export class MusicService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to like comment');
+      throw toAppError(error, 'errors.generic.comment');
     }
   }
 
@@ -703,7 +705,7 @@ export class MusicService {
       if (fetchError) throw new Error(fetchError.message);
 
       if (!comment) {
-        throw new Error('Comment not found');
+        throw appError('errors.music.commentNotFound');
       }
 
       const likedBy = comment.liked_by || [];
@@ -719,78 +721,27 @@ export class MusicService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to unlike comment');
+      throw toAppError(error, 'errors.generic.comment');
     }
   }
 
-  static async likeTrack(trackId: string, userId: string): Promise<void> {
-    try {
-      // First get the current track to check if user already liked it
-      const { data: currentTrack, error: fetchError } = await supabase
-        .from('tracks')
-        .select('likes, liked_by')
-        .eq('id', trackId)
-        .single();
-
-      if (fetchError) throw new Error(fetchError.message);
-
-      const currentLikes = currentTrack.likes || 0;
-      const currentLikedBy = currentTrack.liked_by || [];
-      const isAlreadyLiked = currentLikedBy.includes(userId);
-
-      let newLikes: number;
-      let newLikedBy: string[];
-
-      if (isAlreadyLiked) {
-        // Unlike
-        newLikes = currentLikes - 1;
-        newLikedBy = currentLikedBy.filter((id: string) => id !== userId);
-      } else {
-        // Like
-        newLikes = currentLikes + 1;
-        newLikedBy = [...currentLikedBy, userId];
-      }
-
-      const { error } = await supabase
-        .from('tracks')
-        .update({
-          likes: newLikes,
-          liked_by: newLikedBy
-        })
-        .eq('id', trackId);
-
-      if (error) throw new Error(error.message);
-    } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to like/unlike track');
-    }
+  /**
+   * Like or unlike (toggle) as the signed-in user. Likes are stored in
+   * track_likes; tracks.likes / liked_by are kept in sync by the database
+   * (sypher/supabase/migrations/*_track_likes.sql). userId is kept for API
+   * compatibility — the server uses the session user.
+   */
+  static async likeTrack(trackId: string, _userId?: string): Promise<{ liked: boolean; likes: number }> {
+    const { data, error } = await supabase.rpc('toggle_track_like', { p_track_id: trackId });
+    if (error) throw new Error(error.message || 'Failed to like/unlike track');
+    return data as { liked: boolean; likes: number };
   }
 
-  /** Add a like for this track (no-op if user already liked). Use for swipe-right / discover. */
-  static async addTrackLike(trackId: string, userId: string): Promise<void> {
-    try {
-      const { data: currentTrack, error: fetchError } = await supabase
-        .from('tracks')
-        .select('likes, liked_by')
-        .eq('id', trackId)
-        .single();
-
-      if (fetchError) throw new Error(fetchError.message);
-
-      const currentLikedBy = currentTrack.liked_by || [];
-      if (currentLikedBy.includes(userId)) return;
-
-      const newLikes = (currentTrack.likes || 0) + 1;
-      const newLikedBy = [...currentLikedBy, userId];
-
-      const { error } = await supabase
-        .from('tracks')
-        .update({ likes: newLikes, liked_by: newLikedBy })
-        .eq('id', trackId);
-
-      if (error) throw new Error(error.message);
-    } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to add track like');
-    }
+  /** Add a like (no-op if already liked). Use for swipe-right / discover. */
+  static async addTrackLike(trackId: string, _userId?: string): Promise<{ liked: boolean; likes: number }> {
+    const { data, error } = await supabase.rpc('set_track_like', { p_track_id: trackId, p_liked: true });
+    if (error) throw new Error(error.message || 'Failed to add track like');
+    return data as { liked: boolean; likes: number };
   }
 
   static async getTrackLikes(trackId: string): Promise<{ likes: number; likedBy: string[] }> {
@@ -808,7 +759,7 @@ export class MusicService {
         likedBy: data.liked_by || []
       };
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch track likes');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -822,7 +773,7 @@ export class MusicService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to delete comment');
+      throw toAppError(error, 'errors.generic.comment');
     }
   }
 
@@ -847,10 +798,10 @@ export class MusicService {
         `)
         .maybeSingle();
       if (error) throw new Error(error.message);
-      if (!data) throw new Error('Failed to create comment');
+      if (!data) throw appError('errors.music.comment');
       return this.transformComment(data);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to add comment');
+      throw toAppError(error, 'errors.generic.comment');
     }
   }
 
@@ -868,9 +819,9 @@ export class MusicService {
         .eq('post_id', postId)
         .order('created_at', { ascending: false });
       if (error) throw new Error(error.message);
-      return data.map(comment => this.transformComment(comment));
+      return withoutHiddenUsers(data, (c: any) => c.user_id).map(comment => this.transformComment(comment));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch comments');
+      throw toAppError(error, 'errors.generic.comment');
     }
   }
 
@@ -882,7 +833,7 @@ export class MusicService {
         .eq('id', commentId)
         .maybeSingle();
       if (fetchError) throw new Error(fetchError.message);
-      if (!comment) throw new Error('Comment not found');
+      if (!comment) throw appError('errors.music.commentNotFound');
       const likedBy = comment.liked_by || [];
       const isLiked = likedBy.includes(userId);
       if (!isLiked) likedBy.push(userId);
@@ -892,7 +843,7 @@ export class MusicService {
         .eq('id', commentId);
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to like comment');
+      throw toAppError(error, 'errors.generic.comment');
     }
   }
 
@@ -904,7 +855,7 @@ export class MusicService {
         .eq('id', commentId)
         .maybeSingle();
       if (fetchError) throw new Error(fetchError.message);
-      if (!comment) throw new Error('Comment not found');
+      if (!comment) throw appError('errors.music.commentNotFound');
       const likedBy = comment.liked_by || [];
       const filteredLikedBy = likedBy.filter((id: string) => id !== userId);
       const { error } = await supabase
@@ -913,7 +864,7 @@ export class MusicService {
         .eq('id', commentId);
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to unlike comment');
+      throw toAppError(error, 'errors.generic.comment');
     }
   }
 
@@ -926,7 +877,7 @@ export class MusicService {
         .eq('user_id', userId);
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to delete comment');
+      throw toAppError(error, 'errors.generic.comment');
     }
   }
 
@@ -942,7 +893,7 @@ export class MusicService {
       const regularTracks = (data || []).map((track: any) => this.transformTrack(track)).filter((t: Track) => !boostedIds.has(t.id));
       return [...boostedTracks, ...regularTracks].slice(0, limit);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to get recommended tracks');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -958,7 +909,7 @@ export class MusicService {
       const regularTracks = (data || []).map((track: any) => this.transformTrack(track)).filter((t: Track) => !boostedIds.has(t.id));
       return [...boostedInGenre, ...regularTracks].slice(0, limit);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to get tracks by genre');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -974,7 +925,7 @@ export class MusicService {
 
       return data.map(track => this.transformTrack(track));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch tracks by album');
+      throw toAppError(error, 'errors.generic.album');
     }
   }
 
@@ -995,7 +946,7 @@ export class MusicService {
       const regularTracks = (data || []).map((track: any) => this.transformTrack(track)).filter((t: Track) => !boostedIds.has(t.id));
       return [...boostedMatches, ...regularTracks].slice(0, limit);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to search tracks');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -1010,7 +961,7 @@ export class MusicService {
       const regularTracks = (data || []).map((track: any) => this.transformTrack(track)).filter((t: Track) => !boostedIds.has(t.id));
       return [...boostedTracks, ...regularTracks].slice(0, limit);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to get popular tracks');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -1076,7 +1027,7 @@ export class MusicService {
         rank: index + 1,
       }));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch weekly charts');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -1108,7 +1059,7 @@ export class MusicService {
 
       return (data || []).map((ph: any) => this.transformTrack(ph.tracks));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to get user play history');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -1125,7 +1076,7 @@ export class MusicService {
       const genres = Array.from(new Set((data || []).map((track: any) => track.genre)));
       return genres.sort();
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to get available genres');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -1153,6 +1104,7 @@ export class MusicService {
       bpm: dbTrack.bpm != null ? Number(dbTrack.bpm) : undefined,
       previewStartSec: dbTrack.preview_start_sec != null ? Number(dbTrack.preview_start_sec) : undefined,
       previewDurationSec: dbTrack.preview_duration_sec != null ? Number(dbTrack.preview_duration_sec) : undefined,
+      licenseType: dbTrack.license_type ?? undefined,
     };
   }
 
@@ -1205,7 +1157,7 @@ export class MusicService {
         throw new Error(error.message);
       }
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to add bookmark');
+      throw toAppError(error, 'errors.generic.bookmark');
     }
   }
 
@@ -1219,7 +1171,7 @@ export class MusicService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to remove bookmark');
+      throw toAppError(error, 'errors.generic.bookmark');
     }
   }
 
@@ -1235,7 +1187,7 @@ export class MusicService {
       if (error) throw new Error(error.message);
       return !!data;
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to check bookmark status');
+      throw toAppError(error, 'errors.generic.bookmark');
     }
   }
 
@@ -1253,7 +1205,7 @@ export class MusicService {
 
       return (data || []).map((bookmark: any) => this.transformTrack(bookmark.tracks));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch bookmarks');
+      throw toAppError(error, 'errors.generic.bookmark');
     }
   }
 
@@ -1277,7 +1229,7 @@ export class MusicService {
 
       return (data || []).map((t: any) => this.transformTrack(t));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch liked tracks');
+      throw toAppError(error, 'errors.generic.load');
     }
   }
 
@@ -1292,8 +1244,8 @@ export class MusicService {
         .maybeSingle();
 
       if (playlistError) throw new Error(playlistError.message);
-      if (!playlist) throw new Error('Playlist not found');
-      if (playlist.created_by !== inviterId) throw new Error('You do not have permission to invite users to this playlist');
+      if (!playlist) throw appError('errors.music.playlistNotFound');
+      if (playlist.created_by !== inviterId) throw appError('errors.music.inviteDenied');
 
       // Check if invitation already exists
       const { data: existingInvitation, error: checkError } = await supabase
@@ -1307,9 +1259,9 @@ export class MusicService {
 
       if (existingInvitation) {
         if (existingInvitation.status === 'accepted') {
-          throw new Error('User is already a collaborator on this playlist');
+          throw appError('errors.music.alreadyCollaborator');
         } else if (existingInvitation.status === 'pending') {
-          throw new Error('Invitation already sent to this user');
+          throw appError('errors.music.alreadyInvited');
         } else {
           // If declined, update to pending
           const { error: updateError } = await supabase
@@ -1334,12 +1286,12 @@ export class MusicService {
 
       if (error) {
         if (error.code === '23505') {
-          throw new Error('Invitation already exists');
+          throw appError('errors.music.alreadyInvited');
         }
         throw new Error(error.message);
       }
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to send invitation');
+      throw toAppError(error, 'errors.generic.invitation');
     }
   }
 
@@ -1354,7 +1306,7 @@ export class MusicService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to accept invitation');
+      throw toAppError(error, 'errors.generic.invitation');
     }
   }
 
@@ -1369,7 +1321,7 @@ export class MusicService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to decline invitation');
+      throw toAppError(error, 'errors.generic.invitation');
     }
   }
 
@@ -1404,7 +1356,7 @@ export class MusicService {
 
       return data || [];
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch invitations');
+      throw toAppError(error, 'errors.generic.invitation');
     }
   }
 
@@ -1430,7 +1382,7 @@ export class MusicService {
         invitationId: invitation.id
       }));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch collaborators');
+      throw toAppError(error, 'errors.generic.invitation');
     }
   }
 
@@ -1459,7 +1411,7 @@ export class MusicService {
         createdAt: invitation.created_at
       }));
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to fetch pending invitations');
+      throw toAppError(error, 'errors.generic.invitation');
     }
   }
 
@@ -1478,9 +1430,9 @@ export class MusicService {
         .maybeSingle();
 
       if (fetchError) throw new Error(fetchError.message);
-      if (!invitation) throw new Error('Invitation not found');
+      if (!invitation) throw appError('errors.music.invitationNotFound');
       if (invitation.playlists.created_by !== ownerId) {
-        throw new Error('You do not have permission to remove this collaborator');
+        throw appError('errors.music.removeCollabDenied');
       }
 
       // Delete the invitation (this removes the collaborator)
@@ -1491,7 +1443,7 @@ export class MusicService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to remove collaborator');
+      throw toAppError(error, 'errors.generic.invitation');
     }
   }
 
@@ -1510,9 +1462,9 @@ export class MusicService {
         .maybeSingle();
 
       if (fetchError) throw new Error(fetchError.message);
-      if (!invitation) throw new Error('Invitation not found');
+      if (!invitation) throw appError('errors.music.invitationNotFound');
       if (invitation.playlists.created_by !== ownerId) {
-        throw new Error('You do not have permission to cancel this invitation');
+        throw appError('errors.music.cancelInviteDenied');
       }
 
       // Delete the pending invitation
@@ -1524,7 +1476,7 @@ export class MusicService {
 
       if (error) throw new Error(error.message);
     } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Failed to cancel invitation');
+      throw toAppError(error, 'errors.generic.invitation');
     }
   }
 

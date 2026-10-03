@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../services/supabase';
+import { colors } from '../../theme'
 
 const DESIGNATED_AGENT = {
   name: 'Thomas Kim',
@@ -257,7 +258,7 @@ const DmcaScreen: React.FC = () => {
               >
                 {status === 'submitting' ? (
                   <View style={styles.submitInner}>
-                    <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+                    <ActivityIndicator size="small" color="#000000" style={{ marginRight: 8 }} />
                     <Text style={styles.submitText}>Submitting…</Text>
                   </View>
                 ) : (

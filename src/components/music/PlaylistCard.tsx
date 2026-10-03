@@ -22,6 +22,7 @@ import {
 import { useStore } from '../../store/useStore';
 import { AuthService } from '../../services/authService';
 import { MusicService } from '../../services/musicService';
+import { useTranslation } from 'react-i18next';
 
 // ─── Local types (Playlist / Track not exported from store) ───────────────────
 interface Track {
@@ -69,6 +70,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
   showActions = true,
   compact = false,
 }) => {
+  const { t } = useTranslation();
   const { user, playQueue, playlists, setPlaylists, deletePlaylist } = useStore();
 
   const [showMenu, setShowMenu] = useState(false);
@@ -112,7 +114,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
       }
       setIsEditing(false);
     } catch {
-      Alert.alert('Error', 'Failed to update playlist. Please try again.');
+      Alert.alert(t('common.error'), t('playlistCard.updateFailed'));
     } finally {
       setIsUpdating(false);
     }
@@ -122,12 +124,12 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
   const handleDelete = () => {
     setShowMenu(false);
     Alert.alert(
-      'Delete Playlist',
-      `Are you sure you want to delete "${playlist.name}"? This cannot be undone.`,
+      t('playlistCard.deleteTitle'),
+      t('playlistCard.deleteBody', { name: playlist.name }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Delete', style: 'destructive',
+          text: t('playlistCard.delete'), style: 'destructive',
           onPress: () => {
             if (onDelete) onDelete(playlist.id);
             else deletePlaylist(playlist.id);
@@ -141,7 +143,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
   return (
     <>
       <View
-        className={`flex-row items-center gap-3 rounded-lg overflow-hidden p-3 border-l-4 border-l-violet-500 bg-violet-500/10 w-full${compact ? '' : ''}`}
+        className={`flex-row items-center gap-3 rounded-lg overflow-hidden p-3 border-l-4 border-black bg-white w-full${compact ? '' : ''}`}
       >
         {/* Cover */}
         <View className="relative w-12 h-12 flex-shrink-0 rounded-md overflow-hidden bg-dark-700">
@@ -156,18 +158,18 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
           </View>
           {!playlist.isPublic && (
             <View className="absolute top-0.5 right-0.5 bg-violet-600 px-1 rounded">
-              <Text className="text-white" style={{ fontSize: 9 }}>Private</Text>
+              <Text className="text-white" style={{ fontSize: 9 }}>{t('playlistCard.private')}</Text>
             </View>
           )}
         </View>
 
         {/* Info */}
         <View className="flex-1 min-w-0">
-          <Text className="text-white font-semibold text-sm" numberOfLines={1}>
+          <Text className="text-black font-semibold text-sm" numberOfLines={1}>
             {playlist.name}
           </Text>
-          <Text className="text-dark-400 text-xs" numberOfLines={1}>
-            {playlist.tracks.length} track{playlist.tracks.length !== 1 ? 's' : ''}
+          <Text className="text-black text-xs" numberOfLines={1}>
+            {t('playlistCard.tracks', { count: playlist.tracks.length })}
             {playlist.description ? ` • ${playlist.description}` : ''}
           </Text>
         </View>
@@ -218,7 +220,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
                 activeOpacity={0.7}
               >
                 <Edit3 size={16} color="#d1d5db" />
-                <Text className="text-white text-sm">Edit name</Text>
+                <Text className="text-white text-sm">{t('playlistCard.editName')}</Text>
               </TouchableOpacity>
             )}
 
@@ -229,7 +231,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
                 activeOpacity={0.7}
               >
                 <Plus size={16} color="#d1d5db" />
-                <Text className="text-white text-sm">Add tracks</Text>
+                <Text className="text-white text-sm">{t('playlistCard.addTracks')}</Text>
               </TouchableOpacity>
             )}
 
@@ -240,7 +242,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
                 activeOpacity={0.7}
               >
                 <Trash2 size={16} color="#f87171" />
-                <Text className="text-red-400 text-sm">Delete playlist</Text>
+                <Text className="text-red-400 text-sm">{t('playlistCard.deletePlaylist')}</Text>
               </TouchableOpacity>
             )}
 
@@ -249,7 +251,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
               className="mt-2 py-3 items-center bg-dark-700 rounded-xl"
               activeOpacity={0.8}
             >
-              <Text className="text-white/60 text-sm font-medium">Cancel</Text>
+              <Text className="text-white/60 text-sm font-medium">{t('common.cancel')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -265,18 +267,18 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
         <View className="flex-1 bg-black/60 items-center justify-center p-6">
           <View className="w-full bg-dark-800 border border-dark-600 rounded-2xl p-6 gap-4">
             <View className="flex-row items-center justify-between">
-              <Text className="text-white font-bold text-lg">Edit Playlist</Text>
+              <Text className="text-white font-bold text-lg">{t('playlistCard.edit')}</Text>
               <TouchableOpacity onPress={() => setIsEditing(false)} activeOpacity={0.7}>
                 <X size={20} color="#6b7280" />
               </TouchableOpacity>
             </View>
 
             <View>
-              <Text className="text-sm text-dark-300 mb-2">Playlist name</Text>
+              <Text className="text-sm text-dark-300 mb-2">{t('playlistCard.name')}</Text>
               <TextInput
                 value={editName}
                 onChangeText={setEditName}
-                placeholder="Playlist name"
+                placeholder={t('playlistCard.name')}
                 placeholderTextColor="rgba(255,255,255,0.25)"
                 className="w-full px-3 py-2.5 bg-dark-700 border border-dark-600 rounded-lg text-white"
                 autoFocus
@@ -291,10 +293,10 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
                 activeOpacity={0.8}
               >
                 {isUpdating
-                  ? <ActivityIndicator size="small" color="#fff" />
+                  ? <ActivityIndicator size="small" color="#000000" />
                   : <Save size={15} color="#fff" />}
                 <Text className="text-white font-semibold text-sm">
-                  {isUpdating ? 'Saving…' : 'Save'}
+                  {isUpdating ? t('playlistCard.saving') : t('common.save')}
                 </Text>
               </TouchableOpacity>
 
@@ -303,7 +305,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
                 className="px-4 py-2.5 rounded-lg bg-dark-700"
                 activeOpacity={0.8}
               >
-                <Text className="text-white text-sm">Cancel</Text>
+                <Text className="text-white text-sm">{t('common.cancel')}</Text>
               </TouchableOpacity>
             </View>
           </View>

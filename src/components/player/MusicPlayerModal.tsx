@@ -1,15 +1,21 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
-  Text,
+  Text as RNText,
   Image,
   TouchableOpacity,
   Modal,
   Share,
   StyleSheet,
   ActivityIndicator,
+  type TextProps,
 } from 'react-native';
-import { Audio } from 'expo-av';
+import { FONTS } from '../../utils/fonts';
+
+const Text = ({ style, ...props }: TextProps) => (
+  <RNText style={[{ fontFamily: FONTS.body }, style]} {...props} />
+);
+import { useStore } from '../../store/useStore';
 import {
   Play,
   Pause,
@@ -19,6 +25,7 @@ import {
   Share2,
   X,
 } from 'lucide-react-native';
+import i18n from '../../i18n';
 
 const DEFAULT_TRACK_COVER = 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=400&fit=crop';
 
@@ -75,124 +82,73 @@ const SeekBar: React.FC<SeekBarProps> = ({ current, total, onSeek, color = '#7c3
 // ─── MusicPlayerModal ─────────────────────────────────────────────────────────
 
 const MusicPlayerModal: React.FC<MusicPlayerModalProps> = ({ track, isOpen, onClose }) => {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
+  // Drives the app-wide player in the store rather than owning its own audio, so
+  // there's only ever one player (the one on the lock screen) and playback carries
+  // on in the mini player after this closes.
+  const {
+    player,
+    playTrack,
+    pauseTrack,
+    resumeTrack,
+    seekTo,
+    setVolume,
+  } = useStore() as any;
+
   const [isMuted, setIsMuted] = useState(false);
   const [previousVolume, setPreviousVolume] = useState(1);
   const [isLiked, setIsLiked] = useState(false);
-  const [isBuffering, setIsBuffering] = useState(false);
 
-  const soundRef = useRef<Audio.Sound | null>(null);
-
-  // Load audio when track/isOpen changes
-  useEffect(() => {
-    if (!track?.audioUrl || !isOpen) return;
-
-    let sound: Audio.Sound | null = null;
-
-    const load = async () => {
-      setIsPlaying(false);
-      setCurrentTime(0);
-      setDuration(0);
-      setIsBuffering(true);
-
-      try {
-        await soundRef.current?.unloadAsync();
-        soundRef.current = null;
-
-        const { sound: newSound } = await Audio.Sound.createAsync(
-          { uri: track.audioUrl! },
-          { shouldPlay: false, volume: isMuted ? 0 : volume },
-        );
-        sound = newSound;
-        soundRef.current = newSound;
-
-        const status = await newSound.getStatusAsync();
-        if (status.isLoaded && status.durationMillis) {
-          setDuration(status.durationMillis / 1000);
-        }
-
-        newSound.setOnPlaybackStatusUpdate(s => {
-          if (!s.isLoaded) return;
-          setCurrentTime((s.positionMillis ?? 0) / 1000);
-          setIsBuffering(s.isBuffering ?? false);
-          if (s.didJustFinish) {
-            setIsPlaying(false);
-            setCurrentTime(0);
-          }
-        });
-
-        setIsBuffering(false);
-      } catch {
-        setIsBuffering(false);
-      }
-    };
-
-    load();
-
-    return () => {
-      sound?.unloadAsync().catch(() => {});
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track?.audioUrl, isOpen]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      soundRef.current?.unloadAsync().catch(() => {});
-    };
-  }, []);
+  const isCurrent = !!track && player.currentTrack?.id === track.id;
+  const isPlaying = isCurrent && player.isPlaying;
+  const isBuffering = isCurrent && player.isBuffering;
+  const currentTime = isCurrent ? player.currentTime : 0;
+  const duration = isCurrent && player.duration > 0 ? player.duration : (track?.duration ?? 0);
+  const volume: number = player.volume;
 
   const handlePlayPause = useCallback(async () => {
-    if (!soundRef.current) return;
-    if (isPlaying) {
-      await soundRef.current.pauseAsync();
-      setIsPlaying(false);
+    if (!track?.audioUrl) return;
+    if (!isCurrent) {
+      await playTrack(track);
+    } else if (isPlaying) {
+      await pauseTrack();
     } else {
-      await soundRef.current.playAsync();
-      setIsPlaying(true);
+      await resumeTrack();
     }
-  }, [isPlaying]);
+  }, [track, isCurrent, isPlaying, playTrack, pauseTrack, resumeTrack]);
 
   const handleSeek = useCallback(async (newTime: number) => {
-    await soundRef.current?.setPositionAsync(newTime * 1000);
-    setCurrentTime(newTime);
-  }, []);
+    if (isCurrent) await seekTo(newTime);
+  }, [isCurrent, seekTo]);
 
   const handleVolumeChange = useCallback(async (newVol: number) => {
-    setVolume(newVol);
-    await soundRef.current?.setVolumeAsync(newVol);
-  }, []);
+    setIsMuted(false);
+    await setVolume(newVol);
+  }, [setVolume]);
 
   const handleMuteToggle = useCallback(async () => {
     if (isMuted) {
       setIsMuted(false);
-      setVolume(previousVolume);
-      await soundRef.current?.setVolumeAsync(previousVolume);
+      await setVolume(previousVolume);
     } else {
       setPreviousVolume(volume);
       setIsMuted(true);
-      await soundRef.current?.setVolumeAsync(0);
+      await setVolume(0);
     }
-  }, [isMuted, volume, previousVolume]);
+  }, [isMuted, volume, previousVolume, setVolume]);
 
   const handleShare = useCallback(async () => {
     if (!track) return;
     try {
       await Share.share({
         title: track.title,
-        message: `Check out ${track.title}${track.artist ? ` by ${track.artist}` : ''}`,
+        message: track.artist ? i18n.t('player.shareMessage', { title: track.title, artist: track.artist }) : i18n.t('player.shareMessageNoArtist', { title: track.title }),
       });
     } catch {
       // user cancelled or share unavailable
     }
   }, [track]);
 
-  const handleClose = useCallback(async () => {
-    await soundRef.current?.pauseAsync().catch(() => {});
-    setIsPlaying(false);
+  const handleClose = useCallback(() => {
     onClose();
   }, [onClose]);
 
@@ -213,7 +169,7 @@ const MusicPlayerModal: React.FC<MusicPlayerModalProps> = ({ track, isOpen, onCl
         <TouchableOpacity activeOpacity={1} onPress={() => {}} style={styles.card}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Now Playing</Text>
+            <Text style={styles.headerTitle}>{i18n.t('player.nowPlaying')}</Text>
             <TouchableOpacity onPress={handleClose} style={styles.closeBtn} activeOpacity={0.7}>
               <X size={20} color="#d1d5db" />
             </TouchableOpacity>
@@ -234,7 +190,7 @@ const MusicPlayerModal: React.FC<MusicPlayerModalProps> = ({ track, isOpen, onCl
             )}
             {isBuffering && (
               <View style={styles.bufferOverlay}>
-                <ActivityIndicator size="large" color="#fff" />
+                <ActivityIndicator size="large" color="#000000" />
               </View>
             )}
           </View>
@@ -273,7 +229,7 @@ const MusicPlayerModal: React.FC<MusicPlayerModalProps> = ({ track, isOpen, onCl
               activeOpacity={0.85}
             >
               {isBuffering
-                ? <ActivityIndicator color="#fff" />
+                ? <ActivityIndicator color="#000000" />
                 : isPlaying
                   ? <Pause size={22} color="#fff" />
                   : <Play size={22} color="#fff" />}

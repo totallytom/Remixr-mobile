@@ -81,7 +81,7 @@ const Feed: React.FC = () => {
   if (isLoading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#7c3aed" />
+        <ActivityIndicator size="large" color="#000000" />
         <Text style={styles.loadingText}>Loading posts…</Text>
       </View>
     );
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingText: {
-    color: '#6b7280',
+    color: '#000000',
     fontSize: 14,
     marginTop: 8,
   },

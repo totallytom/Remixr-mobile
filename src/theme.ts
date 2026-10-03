@@ -3,7 +3,7 @@ import { StyleSheet, Platform } from 'react-native';
 // ─── Color Palette ────────────────────────────────────────────────────────────
 export const colors = {
   // Core
-  background:    '#121212',
+  background:    '#DBDBDB',
   surface:       '#FFFFFF',
   surfaceElevated: '#F8F9FA',
   surfaceHover:  '#E9ECEF',
@@ -24,6 +24,7 @@ export const colors = {
   textSecondary: '#6C757D',
   textMuted:     '#ADB5BD',
   textWhite:     '#FFFFFF',
+  textBlack:     '#121212',
   textInactive:  'rgba(255,255,255,0.6)',
 
   // Borders
@@ -51,7 +52,7 @@ export const colors = {
   sidebarGlow:         '#8aec9f',
 
   // Semantic aliases kept for back-compat
-  bg:        '#121212',
+  bg:        '##F5EFE0',
 };
 
 // ─── Typography ───────────────────────────────────────────────────────────────

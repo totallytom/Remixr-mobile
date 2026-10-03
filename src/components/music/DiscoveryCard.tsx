@@ -1,7 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import LicenseBadge from './LicenseBadge';
 import { View, Text, Image, TouchableOpacity, StyleSheet, Animated, PanResponder } from 'react-native';
-import { Audio } from 'expo-av';
+import type { AudioPlayer } from 'expo-audio';
+import { createPreviewPlayer, releasePlayer, waitUntilLoaded } from '../../services/audio';
 import { Play, Pause, Star, Mic } from 'lucide-react-native';
+import i18n from '../../i18n';
 
 // ─── Track type ───────────────────────────────────────────────────────────────
 export interface Track {
@@ -44,7 +47,7 @@ const DiscoveryCardComponent: React.FC<DiscoveryCardProps> = ({
   const translateX = useRef(new Animated.Value(0)).current;
   const isExiting = useRef(false);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const soundRef = useRef<AudioPlayer | null>(null);
 
   const previewStart = Math.max(0, track.previewStartSec ?? 0);
   const previewDuration = Math.min(
@@ -78,7 +81,7 @@ const DiscoveryCardComponent: React.FC<DiscoveryCardProps> = ({
   // ── Audio cleanup on unmount ──────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      soundRef.current?.unloadAsync().catch(() => {});
+      releasePlayer(soundRef.current);
       soundRef.current = null;
     };
   }, []);
@@ -88,35 +91,27 @@ const DiscoveryCardComponent: React.FC<DiscoveryCardProps> = ({
     if (!track.audioUrl) return;
 
     if (isPreviewPlaying) {
-      await soundRef.current?.pauseAsync();
+      soundRef.current?.pause();
       setIsPreviewPlaying(false);
       return;
     }
 
     try {
       if (!soundRef.current) {
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: track.audioUrl },
-          { positionMillis: previewStart * 1000 },
-        );
-        soundRef.current = sound;
-
-        sound.setOnPlaybackStatusUpdate(status => {
-          if (
-            status.isLoaded &&
-            status.positionMillis != null &&
-            status.positionMillis >= previewEnd * 1000 - 100
-          ) {
-            sound.pauseAsync();
-            sound.setPositionAsync(previewStart * 1000);
+        const sound = createPreviewPlayer(track.audioUrl, (status) => {
+          // Stop at the end of the preview window and rewind for the next play.
+          if (status.isLoaded && status.playing && status.currentTime >= previewEnd - 0.1) {
+            sound.pause();
+            sound.seekTo(previewStart).catch(() => {});
             setIsPreviewPlaying(false);
           }
         });
-      } else {
-        await soundRef.current.setPositionAsync(previewStart * 1000);
+        soundRef.current = sound;
+        await waitUntilLoaded(sound);
       }
 
-      await soundRef.current.playAsync();
+      await soundRef.current.seekTo(previewStart);
+      soundRef.current.play();
       setIsPreviewPlaying(true);
     } catch {
       setIsPreviewPlaying(false);
@@ -199,7 +194,7 @@ const DiscoveryCardComponent: React.FC<DiscoveryCardProps> = ({
         {track.boosted && (
           <View style={styles.featuredBadge}>
             <Star size={11} color="#713f12" fill="#713f12" />
-            <Text style={styles.featuredText}>FEATURED</Text>
+            <Text style={styles.featuredText}>{i18n.t('discover.featured')}</Text>
           </View>
         )}
 
@@ -207,10 +202,10 @@ const DiscoveryCardComponent: React.FC<DiscoveryCardProps> = ({
         {isTop && (
           <>
             <Animated.View style={[styles.likeStamp, { opacity: likeOpacity }]}>
-              <Text style={styles.likeText}>Like</Text>
+              <Text style={styles.likeText}>{i18n.t('discover.like')}</Text>
             </Animated.View>
             <Animated.View style={[styles.nopeStamp, { opacity: nopeOpacity }]}>
-              <Text style={styles.nopeText}>Nope</Text>
+              <Text style={styles.nopeText}>{i18n.t('discover.nope')}</Text>
             </Animated.View>
           </>
         )}
@@ -239,6 +234,9 @@ const DiscoveryCardComponent: React.FC<DiscoveryCardProps> = ({
           {track.artist ? (
             <Text style={styles.trackArtist} numberOfLines={1}>{track.artist}</Text>
           ) : null}
+          <View style={{ marginTop: 4 }}>
+            <LicenseBadge license={(track as { licenseType?: string }).licenseType} onDark />
+          </View>
           {track.genre ? (
             <Text style={styles.trackGenre} numberOfLines={1}>{track.genre}</Text>
           ) : null}
