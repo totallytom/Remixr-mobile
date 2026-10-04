@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { Check, X, Clock } from 'lucide-react-native';
 import { getAvatarUrl } from '../../utils/avatar';
 import VerifiedBadge from '../VerifiedBadge';
@@ -45,7 +46,7 @@ const FollowRequestCard: React.FC<FollowRequestCardProps> = ({
       <Image
         source={{ uri: getAvatarUrl(request.user.avatar) }}
         style={styles.avatar}
-        resizeMode="cover"
+        contentFit="cover"
       />
 
       {/* Info */}

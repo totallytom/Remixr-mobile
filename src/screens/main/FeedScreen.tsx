@@ -4,11 +4,11 @@ import {
   Text as RNText,
   FlatList,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   RefreshControl,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 import { colors } from '../../theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -239,7 +239,7 @@ export default function FeedScreen() {
                 <Image
                   source={{ uri: item.track.cover }}
                   style={{ width: 56, height: 56, borderRadius: 10, backgroundColor: '#1f2937', flexShrink: 0 }}
-                  resizeMode="cover"
+                  contentFit="cover"
                 />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: '#121212', fontWeight: '600', fontSize: 14, lineHeight: 18 }} numberOfLines={1}>

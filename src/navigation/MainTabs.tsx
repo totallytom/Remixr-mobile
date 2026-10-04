@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Pressable, Text, TouchableOpacity, Image, Platform } from 'react-native';
+import { View, Pressable, Text, TouchableOpacity, Platform } from 'react-native';
+import { Image } from 'expo-image';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {

@@ -4,13 +4,13 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Image,
   ScrollView,
   Share,
   Linking,
   Animated,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { OnboardingStackParamList } from '../../navigation/OnboardingStack';
@@ -112,7 +112,7 @@ const ProfilePreview: React.FC<{
               <Image
                 source={{ uri: getAvatarUrl(avatar) }}
                 className="w-full h-full"
-                resizeMode="cover"
+                contentFit="cover"
               />
             ) : (
               <View className="flex-1 items-center justify-center bg-violet-900/40">
@@ -169,7 +169,7 @@ const ProfilePreview: React.FC<{
               <Image
                 source={{ uri: coverSrc }}
                 className="w-11 h-11 rounded-lg"
-                resizeMode="cover"
+                contentFit="cover"
               />
               <View className="flex-1 min-w-0">
                 <Text className="text-sm font-semibold text-white" numberOfLines={1}>

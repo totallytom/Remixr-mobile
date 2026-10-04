@@ -1,6 +1,7 @@
 /** Artist analytics: the people who found your tracks earliest (Early Ear). */
 import React, { useEffect, useState } from 'react';
-import { View, Text, Image, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { formatDistanceToNow } from 'date-fns';

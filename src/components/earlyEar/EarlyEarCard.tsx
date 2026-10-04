@@ -3,7 +3,8 @@
  * private switch. Someone else's: only when they've made it public.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, Image, Switch, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Switch, StyleSheet, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { Ear, Play, Lock } from 'lucide-react-native';

@@ -41,7 +41,9 @@
     "shareMessage": "Check out @{{username}} on Re-Mixed! 🎵",
     "shareMessageNoName": "Check out my profile on Re-Mixed! 🎵",
     "topAlbumChart": "Top Album Chart",
-    "latestReleases": "Your latest releases"
+    "latestReleases": "Your latest releases",
+    "reduceMotionOn": "Reduce motion: On",
+    "reduceMotionOff": "Reduce motion: Off"
   },
   "settings": {
     "title": "Settings",
@@ -61,7 +63,7 @@
     },
     "reduceMotion": {
       "title": "Reduce motion",
-      "description": "Stops moving animations: the bouncing TV logo, scrolling ticker, cassette reels and equalizer. Follows your device's Reduce Motion setting until you change it here."
+      "description": "Stops moving animations: hides the bouncing TV logo and stills the scrolling ticker, cassette reels and equalizer. Follows your device's Reduce Motion setting until you change it here or on the Home screen."
     },
     "showPassword": "Show password",
     "hidePassword": "Hide password",
@@ -561,7 +563,13 @@
     "shareMessageNoArtist": "Check out {{title}}",
     "showHint": "Shows the music player",
     "pillNowPlaying": "{{title}} by {{artist}}, now playing",
-    "pillPaused": "{{title}} by {{artist}}, paused"
+    "pillPaused": "{{title}} by {{artist}}, paused",
+    "seek": "Playback position",
+    "scrubFull": "Hi-speed scrubbing",
+    "scrubHalf": "Half-speed scrubbing",
+    "scrubQuarter": "Quarter-speed scrubbing",
+    "scrubFine": "Fine scrubbing",
+    "queueTitle": "Queue ({{count}})"
   },
   "discover": {
     "title": "Swipe to discover",
@@ -662,7 +670,8 @@
     "playsWeek_other": "{{count}} plays this week",
     "emptyTop": "No liked tracks yet. Be the first to like a track!",
     "emptyWeekly": "No weekly data yet — start listening to see tracks rank up!",
-    "title": "Chart"
+    "title": "Chart",
+    "subtitle": "All-time favourites & this week's plays."
   },
   "album": {
     "loading": "Loading album…",
@@ -1463,5 +1472,13 @@
     "emptyTitle": "Nothing here yet",
     "emptyBody": "New tracks will show up here as artists upload them.",
     "dropped": "dropped a track · {{time}}"
+  },
+  "promo": {
+    "title": "More from Amulet Studios",
+    "subtitle": "Free games from the makers of Re-Mixed",
+    "floodlingsTagline": "Flood the board, beat the clock — a fast color puzzle",
+    "blockysBlitzTagline": "13 quick brain games, 60 seconds each",
+    "get": "GET",
+    "openA11y": "Open {{name}} in the App Store"
   }
 }

@@ -2,16 +2,15 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text as RNText,
-  Image,
   TouchableOpacity,
   Modal,
   ScrollView,
   StyleSheet,
   ActivityIndicator,
-  ImageBackground,
   Animated,
   type TextProps,
 } from 'react-native';
+import { Image, ImageBackground } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 
 const Text = ({ style, ...props }: TextProps) => (
@@ -135,6 +134,8 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
+  // Off while the seek bar is held, so the page can't steal the drag.
+  const [scrollEnabled, setScrollEnabled] = useState(true);
 
   const palette = useImageColors(track.cover);
 
@@ -152,7 +153,7 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
       <ImageBackground
         source={{ uri: track.cover || DEFAULT_TRACK_COVER }}
         style={StyleSheet.absoluteFill}
-        resizeMode="cover"
+        contentFit="cover"
         blurRadius={20}
       >
         <ScrollView
@@ -160,6 +161,7 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
           contentContainerStyle={styles.fsScrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          scrollEnabled={scrollEnabled}
         >
           {/* Header */}
           <View style={styles.fsHeader}>
@@ -178,7 +180,7 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
             <Image
               source={{ uri: track.cover || DEFAULT_TRACK_COVER }}
               style={styles.fsArt}
-              resizeMode="cover"
+              contentFit="cover"
             />
             {player.isBuffering && (
               <View style={styles.fsBufferingOverlay}>
@@ -199,6 +201,8 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
               currentTime={currentTime}
               duration={duration}
               onSeek={onSeek}
+              onScrubStart={() => setScrollEnabled(false)}
+              onScrubEnd={() => setScrollEnabled(true)}
               isPlaying={isPlaying}
               color={palette.accent}
               seed={track.id}
@@ -341,7 +345,7 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
             <AnimatedPanel>
             <View style={styles.fsQueuePanel}>
               <View style={styles.fsQueueHeader}>
-                <Text style={styles.fsQueueTitle}>Queue ({player.queue.length})</Text>
+                <Text style={styles.fsQueueTitle}>{i18n.t('player.queueTitle', { count: player.queue.length })}</Text>
                 {player.shuffle && <Text style={styles.fsQueueShuffle}>{i18n.t('player.shuffled')}</Text>}
               </View>
               {player.queue.length === 0 ? (
@@ -361,7 +365,7 @@ const FullScreenPlayer: React.FC<FullScreenPlayerProps> = ({
                       <Image
                         source={{ uri: t.cover || DEFAULT_TRACK_COVER }}
                         style={styles.queueCover}
-                        resizeMode="cover"
+                        contentFit="cover"
                       />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.queueTitle} numberOfLines={1}>{t.title}</Text>
@@ -421,7 +425,7 @@ const MusicPlayer: React.FC<MusicPlayerProps> = ({
             <Image
               source={{ uri: currentTrack.cover || DEFAULT_TRACK_COVER }}
               style={StyleSheet.absoluteFill}
-              resizeMode="cover"
+              contentFit="cover"
             />
           </TouchableOpacity>
 

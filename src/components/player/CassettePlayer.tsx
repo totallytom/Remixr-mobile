@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text as RNText,
-  Image,
   Modal,
   TouchableOpacity,
   StyleSheet,
@@ -12,6 +11,7 @@ import {
   StatusBar,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 
 const Text = ({ style, ...props }: TextProps) => (
@@ -335,7 +335,7 @@ const CassettePlayer: React.FC<Props> = ({
 
               {/* Center logo */}
               <View style={[s.logoWrap, { left: LOGO_LEFT, top: LOGO_TOP, width: LOGO_SIZE, height: LOGO_SIZE }]}>
-                <Image source={require('../../../assets/logo.png')} style={s.logoImg} resizeMode="contain" />
+                <Image source={require('../../../assets/logo.png')} style={s.logoImg} contentFit="contain" />
               </View>
 
               {/* Graffiti */}

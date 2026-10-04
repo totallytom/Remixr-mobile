@@ -13,11 +13,12 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Image,
   Alert,
   ActivityIndicator,
   Switch,
 } from 'react-native';
+import { Image } from 'expo-image';
+import { FONTS } from '../../utils/fonts';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { UploadStackParamList } from '../../navigation/stacks/UploadStack';
@@ -93,7 +94,7 @@ function createTrackEntry(file: PickedFile, order: number): TrackEntry {
 const AppText: React.FC<React.ComponentProps<typeof Text>> = ({ style, ...props }) => (
   <Text
     style={[
-      { fontFamily: 'MaruMinyaHangul' },
+      { fontFamily: FONTS.body },
       ...(Array.isArray(style) ? style : style ? [style] : []),
     ]}
     {...props}

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import { Play, Edit3, Trash2, Music, Calendar } from 'lucide-react-native';
 import { Album } from '../../services/albumService';
 import { useStore } from '../../store/useStore';
@@ -50,7 +51,7 @@ const AlbumCard: React.FC<AlbumCardProps> = ({
         <Image
           source={{ uri: album.cover }}
           className="w-12 h-12 rounded-md"
-          resizeMode="cover"
+          contentFit="cover"
         />
         <View className="flex-1 min-w-0">
           <Text className="text-white font-medium" numberOfLines={1}>{album.title}</Text>
@@ -96,7 +97,7 @@ const AlbumCard: React.FC<AlbumCardProps> = ({
         <Image
           source={{ uri: album.cover }}
           className="w-full h-full"
-          resizeMode="cover"
+          contentFit="cover"
         />
         {onPlay && (
           <TouchableOpacity

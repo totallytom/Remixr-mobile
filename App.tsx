@@ -1,6 +1,8 @@
 import 'react-native-gesture-handler';
 import './global.css';
 import './src/i18n';
+import { cssInterop } from 'nativewind';
+import { Image as ExpoImage } from 'expo-image';
 import React, { useEffect } from 'react';
 import { FONTS, FONT_SOURCES, applyGlobalTextFont } from './src/utils/fonts';
 import * as Font from 'expo-font';
@@ -8,6 +10,9 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useStore } from './src/store/useStore';
 import RootNavigator from './src/navigation/RootNavigator';
 import AppBackground from './src/components/layout/AppBackground';
+
+// Let NativeWind `className` style expo-image like it did RN's Image.
+cssInterop(ExpoImage, { className: 'style' });
 
 
 function AppContent() {

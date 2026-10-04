@@ -1,11 +1,13 @@
+const { platformSelect } = require('nativewind/theme');
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ['./App.tsx', './src/**/*.{js,jsx,ts,tsx}'],
   presets: [require('nativewind/preset')],
   theme: {
     fontFamily: {
-      sans: ['MaruMinyaHangul'],
-      mono: ['jetbrains_mono_regular'],
+      sans: [platformSelect({ ios: 'x12y12pxMaruMinyaHangul', default: 'MaruMinyaHangul' })],
+      mono: [platformSelect({ ios: 'JetBrainsMono-Regular', default: 'jetbrains_mono_regular' })],
     },
     extend: {
       colors: {

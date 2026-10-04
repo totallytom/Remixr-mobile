@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { Play, Clock, ArrowLeft } from 'lucide-react-native';
@@ -108,7 +108,7 @@ const AlbumTracksScreen: React.FC = () => {
         <Image
           source={{ uri: track.cover || FALLBACK_COVER }}
           style={styles.trackCover}
-          resizeMode="cover"
+          contentFit="cover"
         />
       </View>
 
@@ -142,7 +142,7 @@ const AlbumTracksScreen: React.FC = () => {
               <Image
                 source={{ uri: albumCover }}
                 style={styles.albumCover}
-                resizeMode="cover"
+                contentFit="cover"
               />
 
               <Text style={styles.albumType}>{t('album.type')}</Text>

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   View,
   Text as RNText,
-  Image,
   TouchableOpacity,
   Modal,
   FlatList,
@@ -10,6 +9,7 @@ import {
   Alert,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 
 const Text = ({ style, ...props }: TextProps) => (
@@ -108,7 +108,7 @@ const ChatMusicShare: React.FC<ChatMusicShareProps> = ({ track, onPlay }) => {
       <View style={styles.trackRow}>
         <View style={styles.coverWrapper}>
           {track.cover ? (
-            <Image source={{ uri: track.cover }} style={styles.cover} resizeMode="cover" />
+            <Image source={{ uri: track.cover }} style={styles.cover} contentFit="cover" />
           ) : (
             <View style={styles.coverFallback}>
               <Music size={20} color="#6b7280" />

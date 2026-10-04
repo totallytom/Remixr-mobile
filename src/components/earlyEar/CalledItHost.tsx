@@ -3,7 +3,8 @@
  * back to the foreground. Mount once (MainTabs).
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, View, Text, Image, TouchableOpacity, ScrollView, AppState, StyleSheet } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ScrollView, AppState, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Ear } from 'lucide-react-native';

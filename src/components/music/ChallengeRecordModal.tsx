@@ -4,10 +4,10 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { RecordingPresets, requestRecordingPermissionsAsync, useAudioRecorder, type AudioPlayer } from 'expo-audio';
 import {
   applyPlaybackAudioMode,

@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Pressable,
+import {
+  Pressable,
   View,
   Text as RNText,
   TextInput,
   TouchableOpacity,
   FlatList,
   Modal,
-  Image,
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -16,6 +16,7 @@ import { Pressable,
   ScrollView,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 import { colors } from '../../theme';
 import { supabase } from '../../services/supabase';
@@ -56,7 +57,7 @@ function AvatarImage({ uri, size = 36 }: { uri?: string | null; size?: number })
   const src = getAvatarUrl(uri);
   if (src.startsWith('http')) {
     return (
-      <Image source={{ uri: src }} style={{ width: size, height: size, borderRadius: size / 2 }} resizeMode="cover" />
+      <Image source={{ uri: src }} style={{ width: size, height: size, borderRadius: size / 2 }} contentFit="cover" />
     );
   }
   return (
@@ -1253,7 +1254,7 @@ const ChatScreen: React.FC = () => {
               {djCurrentTrack && (
                 <View style={s.nowPlayingCard}>
                   {djCurrentTrack.cover
-                    ? <Image source={{ uri: djCurrentTrack.cover }} style={s.nowPlayingCover} resizeMode="cover" />
+                    ? <Image source={{ uri: djCurrentTrack.cover }} style={s.nowPlayingCover} contentFit="cover" />
                     : <View style={[s.nowPlayingCover, s.nowPlayingCoverFb]}><Music size={44} color={colors.primary} /></View>}
                   <Text style={s.nowPlayingTitle} numberOfLines={1}>{djCurrentTrack.title}</Text>
                   <Text style={s.nowPlayingArtist} numberOfLines={1}>{djCurrentTrack.artist}</Text>
@@ -1285,7 +1286,7 @@ const ChatScreen: React.FC = () => {
             const isPast = index < djCurrentIdx;
             return (
               <View style={[s.queueItem, isCurrent && s.queueItemCurrent, isPast && s.queueItemPast]}>
-                {track.cover ? <Image source={{ uri: track.cover }} style={s.queueItemCover} resizeMode="cover" /> : <View style={[s.queueItemCover, s.queueItemCoverFb]}><Music size={14} color={colors.textMuted} /></View>}
+                {track.cover ? <Image source={{ uri: track.cover }} style={s.queueItemCover} contentFit="cover" /> : <View style={[s.queueItemCover, s.queueItemCoverFb]}><Music size={14} color={colors.textMuted} /></View>}
                 <View style={s.queueItemInfo}>
                   <Text style={[s.queueItemTitle, isPast && { color: colors.textMuted }]} numberOfLines={1}>{track.title}</Text>
                   <Text style={s.queueItemArtist} numberOfLines={1}>{track.artist}</Text>
@@ -1575,7 +1576,7 @@ const ChatScreen: React.FC = () => {
                 : userTracks.length === 0 ? <Text style={s.sheetEmpty}>{t('chat.noTracksToShare')}</Text>
                 : <FlatList data={userTracks} keyExtractor={(t) => t.id} renderItem={({ item: track }) => (
                   <View style={s.trackRow}>
-                    {track.cover ? <Image source={{ uri: track.cover }} style={s.trackRowCover} resizeMode="cover" /> : <View style={[s.trackRowCover, s.trackRowCoverFb]}><Music size={16} color={colors.textMuted} /></View>}
+                    {track.cover ? <Image source={{ uri: track.cover }} style={s.trackRowCover} contentFit="cover" /> : <View style={[s.trackRowCover, s.trackRowCoverFb]}><Music size={16} color={colors.textMuted} /></View>}
                     <View style={s.trackRowInfo}><Text style={s.trackRowTitle} numberOfLines={1}>{track.title}</Text><Text style={s.trackRowArtist} numberOfLines={1}>{track.artist}</Text></View>
                     <TouchableOpacity style={s.shareBtn} onPress={() => handleShareMusic(track)}><Send size={12} color="#000" /><Text style={s.shareBtnText}>{t('chat.share')}</Text></TouchableOpacity>
                   </View>

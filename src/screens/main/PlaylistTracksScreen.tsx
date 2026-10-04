@@ -11,7 +11,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Pressable,
-  Image,
   ActivityIndicator,
   Modal,
   Alert,
@@ -22,6 +21,7 @@ import {
   Animated,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';

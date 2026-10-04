@@ -6,7 +6,8 @@
  * Mirrors the website's Discover session panel.
  */
 import React, { useMemo } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, Image, StyleSheet, type ViewStyle } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet, type ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 import { Heart, X, Flame, Dna, ChevronUp, Trash2 } from 'lucide-react-native';
 import type { Track } from '../../store/useStore';
 import { hap } from '../../utils/haptics';

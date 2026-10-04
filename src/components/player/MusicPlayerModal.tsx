@@ -2,7 +2,6 @@ import React, { useState, useCallback } from 'react';
 import {
   View,
   Text as RNText,
-  Image,
   TouchableOpacity,
   Modal,
   Share,
@@ -10,6 +9,7 @@ import {
   ActivityIndicator,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 
 const Text = ({ style, ...props }: TextProps) => (
@@ -181,7 +181,7 @@ const MusicPlayerModal: React.FC<MusicPlayerModalProps> = ({ track, isOpen, onCl
               <Image
                 source={{ uri: track.cover }}
                 style={styles.art}
-                resizeMode="cover"
+                contentFit="cover"
               />
             ) : (
               <View style={styles.artFallback}>

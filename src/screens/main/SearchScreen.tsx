@@ -7,11 +7,11 @@ import {
   Text as RNText,
   TouchableOpacity,
   ScrollView,
-  Image,
   ActivityIndicator,
   Linking,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 
 const Text = ({ style, ...props }: TextProps) => (

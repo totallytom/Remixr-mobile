@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { View, ImageBackground, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { ImageBackground } from 'expo-image';
 import { useStore } from '../../store/useStore';
 import { getPreset } from '../../config/backgroundPresets';
 
@@ -22,7 +23,7 @@ export default function AppBackground({ children }: AppBackgroundProps) {
       <ImageBackground
         source={preset.image}
         style={StyleSheet.absoluteFill}
-        resizeMode="cover"
+        contentFit="cover"
       >
         {/* Dark overlay so existing UI text stays readable */}
         <View

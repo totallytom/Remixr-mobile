@@ -4,7 +4,6 @@ import {
   Text as RNText,
   ScrollView,
   TouchableOpacity,
-  Image,
   Animated,
   Easing,
   ActivityIndicator,
@@ -16,6 +15,7 @@ import {
   AppState,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 import { colors } from '../../theme'
 
@@ -34,6 +34,7 @@ import {
   FolderOpen,
   Search,
   Share2,
+  Accessibility,
 } from 'lucide-react-native';
 import { useStore } from '../../store/useStore';
 import TrackCard from '../../components/music/TrackCard';
@@ -48,10 +49,11 @@ import SubscriptionModal from '../../components/subscriptions/SubscriptionModal'
 import { openSubscriptionManagement } from '../../services/revenueCatService';
 import type { HomePagerParamList } from '../../navigation/HomePager';
 import PagerHeader from '../../components/layout/PagerHeader';
-import { useReduceMotion } from '../../hooks/useReduceMotion';
+import { setReduceMotion, useReduceMotion } from '../../hooks/useReduceMotion';
 import { useTranslation } from 'react-i18next';
 import { dateLocale } from '../../utils/dateLocale';
 import { requireAuth } from '../../components/auth/GuestPrompt';
+import MoreAppsBanner from '../../components/promo/MoreAppsBanner';
 
 type HomeNavProp = MaterialTopTabNavigationProp<HomePagerParamList, 'HomeMain'>;
 
@@ -231,12 +233,8 @@ const Home: React.FC = () => {
     const LOGO = 60;
     const maxX = tvScreenW - LOGO;
     const maxY = 200 - LOGO;
-    if (reduceMotion) {
-      // Parked in the middle of the screen instead of bouncing.
-      logoX.setValue(maxX / 2);
-      logoY.setValue(maxY / 2 - 10);
-      return;
-    }
+    // Reduce motion: the logo isn't shown at all (see render).
+    if (reduceMotion) return;
     // px per ms — same speed as the old 2px / 1.3px per 16ms tick.
     bounceRef.current = { x: 20, y: 20, vx: 0.125, vy: 0.08 };
     logoX.setValue(20);
@@ -320,7 +318,7 @@ const Home: React.FC = () => {
                   <Image
                     source={{ uri: player.currentTrack.cover }}
                     style={{ position: 'absolute', width: '100%', height: '100%' }}
-                    resizeMode="cover"
+                    contentFit="cover"
                     accessibilityLabel={player.currentTrack.title}
                   />
                   <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.65)', paddingHorizontal: 12, paddingVertical: 8 }}>
@@ -336,12 +334,12 @@ const Home: React.FC = () => {
                 </>
               ) : (
                 <>
-                  {/* Bouncing logo */}
-                  <Animated.Image
+                  {/* Bouncing logo — hidden entirely with reduce motion */}
+                  {!reduceMotion && <Animated.Image
                     source={require('../../../assets/logo.png')}
                     style={{ position: 'absolute', top: 0, left: 0, width: 60, height: 60, transform: [{ translateX: logoX }, { translateY: logoY }] }}
                     resizeMode="contain"
-                  />
+                  />}
                   {/* No track label */}
                   <Text style={{ color: 'white', fontSize: 11, fontWeight: '600', letterSpacing: 1, opacity: 0.5, position: 'absolute', bottom: 18 }}>
                     {t('home.noTrackLoaded')}
@@ -416,6 +414,24 @@ const Home: React.FC = () => {
               : t('home.tickerWelcome')}   ★   `}
           </Text>
         </Animated.View>
+      </View>
+
+      {/* Reduce motion shortcut (same setting as Settings → Appearance) */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 8, alignItems: 'flex-end' }}>
+        <TouchableOpacity
+          onPress={() => setReduceMotion(!reduceMotion)}
+          activeOpacity={0.7}
+          hitSlop={8}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: reduceMotion }}
+          accessibilityLabel={t('settings.reduceMotion.title')}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1.5, borderColor: reduceMotion ? '#111' : '#9ca3af', backgroundColor: reduceMotion ? '#111' : 'transparent' }}
+        >
+          <Accessibility size={13} color={reduceMotion ? '#fff' : '#4b5563'} />
+          <Text style={{ fontSize: 11, fontWeight: '600', color: reduceMotion ? '#fff' : '#4b5563' }}>
+            {t(reduceMotion ? 'home.reduceMotionOn' : 'home.reduceMotionOff')}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Cassette ── */}
@@ -553,7 +569,7 @@ const Home: React.FC = () => {
                     <Image
                       source={{ uri: track.cover }}
                       style={{ width: 48, height: 48, borderRadius: 10, flexShrink: 0 }}
-                      resizeMode="cover"
+                      contentFit="cover"
                       accessibilityLabel={track.title}
                     />
                     <View style={{ flex: 1, minWidth: 0 }}>
@@ -604,7 +620,7 @@ const Home: React.FC = () => {
                     <View style={{ height: 8, width: 48, borderRadius: 4, backgroundColor: '#374151' }} />
                   </View>
                   <View style={{ margin: 8, borderRadius: 8, overflow: 'hidden', aspectRatio: 1 }}>
-                    <Image source={{ uri: album.cover }} style={{ width: '100%', height: '100%' }} resizeMode="cover" accessibilityLabel={album.title} />
+                    <Image source={{ uri: album.cover }} style={{ width: '100%', height: '100%' }} contentFit="cover" accessibilityLabel={album.title} />
                   </View>
                   <View style={{ paddingHorizontal: 12, paddingBottom: 12 }}>
                     <Text style={{ color: 'white', fontWeight: '600' }} numberOfLines={1}>{album.title}</Text>
@@ -617,6 +633,9 @@ const Home: React.FC = () => {
           </ScrollView>
         </View>
       )}
+
+      {/* ── Our other apps ── */}
+      <MoreAppsBanner style={{ marginHorizontal: 16, marginTop: 28 }} />
 
       <View style={{ height: 8 }} />
 

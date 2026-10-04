@@ -3,7 +3,6 @@ import LicenseBadge from './LicenseBadge';
 import {
   View,
   Text as RNText,
-  Image,
   TouchableOpacity,
   Modal,
   TextInput,
@@ -15,6 +14,7 @@ import {
   StyleSheet,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 
 const Text = ({ style, ...props }: TextProps) => (
@@ -357,7 +357,7 @@ const MessageModal: React.FC<MessageModalProps> = ({ visible, track, onClose }) 
             <Image
               source={{ uri: track.cover || DEFAULT_TRACK_COVER }}
               style={styles.trackPreviewCover}
-              resizeMode="cover"
+              contentFit="cover"
             />
             <View style={{ flex: 1 }}>
               <Text style={styles.trackPreviewTitle} numberOfLines={1}>{track.title}</Text>
@@ -393,7 +393,7 @@ const MessageModal: React.FC<MessageModalProps> = ({ visible, track, onClose }) 
                     <Image
                       source={{ uri: getAvatarUrl(u.avatar) }}
                       style={styles.avatar}
-                      resizeMode="cover"
+                      contentFit="cover"
                     />
                     <View style={{ flex: 1 }}>
                       <View style={styles.usernameRow}>
@@ -683,7 +683,7 @@ const TrackCard: React.FC<TrackCardProps> = ({
               <Image
                 source={coverSource}
                 style={StyleSheet.absoluteFill}
-                resizeMode="cover"
+                contentFit="cover"
                 onError={() => setCoverError(true)}
               />
               {isCurrentlyPlaying && (
@@ -806,7 +806,7 @@ const TrackCard: React.FC<TrackCardProps> = ({
           <Image
             source={coverSource}
             style={StyleSheet.absoluteFill}
-            resizeMode="cover"
+            contentFit="cover"
             onError={() => setCoverError(true)}
           />
           {isCurrentlyPlaying && (

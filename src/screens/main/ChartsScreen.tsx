@@ -3,11 +3,11 @@ import {
   View,
   Text as RNText,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   FlatList,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 
 const Text = ({ style, ...props }: TextProps) => (
@@ -25,7 +25,6 @@ import type { WeeklyChartTrack } from '../../services/musicService';
 import { supabase } from '../../services/supabase';
 import type { HomePagerParamList } from '../../navigation/HomePager';
 import PagerHeader from '../../components/layout/PagerHeader';
-import { MOCK_TOP_TRACKS, MOCK_WEEKLY_TRACKS } from '../../mockdata/charts';
 import { useTranslation } from 'react-i18next';
 
 type ChartsNavProp = MaterialTopTabNavigationProp<HomePagerParamList, 'Charts'>;
@@ -71,13 +70,13 @@ export default function ChartsScreen() {
             },
             likes: t.likes || 0,
           }));
-        setTopTracks(mapped.length > 0 ? mapped : MOCK_TOP_TRACKS);
+        setTopTracks(mapped);
       })
       .finally(() => setIsLoadingTop(false));
 
     MusicService.getWeeklyCharts()
-      .then(tracks => setWeeklyTracks(tracks.length > 0 ? tracks : MOCK_WEEKLY_TRACKS))
-      .catch(() => setWeeklyTracks(MOCK_WEEKLY_TRACKS))
+      .then(setWeeklyTracks)
+      .catch(() => setWeeklyTracks([]))
       .finally(() => setIsLoadingWeekly(false));
   }, []);
 
@@ -129,7 +128,7 @@ export default function ChartsScreen() {
       {/* Section title */}
       <View style={{ paddingHorizontal: 16, paddingBottom: 14, paddingTop: 16 }}>
         <Text style={{ color: '#000', fontSize: 24, fontWeight: '700' }}>{t('charts.title')}</Text>
-        <Text style={{ color: 'rgba(0,0,0,0.45)', fontSize: 13, marginTop: 2 }}>All-time favourites & this week's plays.</Text>
+        <Text style={{ color: 'rgba(0,0,0,0.45)', fontSize: 13, marginTop: 2 }}>{t('charts.subtitle')}</Text>
       </View>
 
       {/* Tabs */}
@@ -224,7 +223,7 @@ export default function ChartsScreen() {
                 <Image
                   source={{ uri: item.track.cover }}
                   style={{ width: 48, height: 48, borderRadius: 10, flexShrink: 0, backgroundColor: '#1f2937' }}
-                  resizeMode="cover"
+                  contentFit="cover"
                   accessibilityLabel={item.track.title}
                 />
 

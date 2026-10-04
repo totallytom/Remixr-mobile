@@ -12,7 +12,6 @@ import {
   TouchableOpacity,
   Pressable,
   TextInput,
-  Image,
   ActivityIndicator,
   Alert,
   StyleSheet,
@@ -21,6 +20,7 @@ import {
   Animated,
   PanResponder,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Trans, useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
@@ -40,6 +40,7 @@ import { FONTS } from '../../utils/fonts';
 import SubscriptionModal from '../subscriptions/SubscriptionModal';
 import { openSubscriptionManagement } from '../../services/revenueCatService';
 import { B, Raised, BrutalButton, Sticker, BrutalToggle, ChoiceChips } from '../ui/brutal';
+import MoreAppsBanner from '../promo/MoreAppsBanner';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface SettingsModalProps { isOpen: boolean; }
@@ -412,7 +413,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen }) => {
     <>
       <Section icon={User} title={t('settings.account.profile')} description={t('settings.account.profileDesc')}>
         <View style={s.avatarRow}>
-          <Image source={{ uri: getAvatarUrl(avatarUri) }} style={s.avatar} resizeMode="cover" />
+          <Image source={{ uri: getAvatarUrl(avatarUri) }} style={s.avatar} contentFit="cover" />
           <View style={{ flex: 1, gap: 10 }}>
             <BrutalButton
               label={t('settings.account.changePhoto')}
@@ -506,6 +507,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen }) => {
           <LinkRow label={t('settings.account.termsOfService')} url="https://info.re-mixed.net/terms" />
         </View>
       </Section>
+
+      <MoreAppsBanner />
 
       <Section
         icon={Trash2}
@@ -655,7 +658,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen }) => {
             >
               <View style={{ flex: 1, backgroundColor: preset.color }}>
                 {preset.image ? (
-                  <Image source={preset.image} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                  <Image source={preset.image} style={StyleSheet.absoluteFill} contentFit="cover" />
                 ) : null}
               </View>
               <View style={[s.presetLabel, active && { backgroundColor: B.teal }]}>

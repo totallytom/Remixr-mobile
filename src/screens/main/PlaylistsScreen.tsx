@@ -9,12 +9,12 @@ import {
   TouchableOpacity,
   TextInput,
   Switch,
-  Image,
   ActivityIndicator,
   Modal,
   Alert,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 
 const Text = ({ style, ...props }: TextProps) => (

@@ -1,9 +1,11 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Image } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import type { MaterialTopTabNavigationProp } from '@react-navigation/material-top-tabs';
 import { Medal, ListMusic, Search } from 'lucide-react-native';
 import type { HomePagerParamList } from '../../navigation/HomePager';
+import { FONTS } from '../../utils/fonts';
 
 type PagerNav = MaterialTopTabNavigationProp<HomePagerParamList>;
 
@@ -17,9 +19,9 @@ export default function PagerHeader() {
         <Image
           source={require('../../../assets/logo.png')}
           style={{ width: 36, height: 36, borderRadius: 18 }}
-          resizeMode="cover"
+          contentFit="cover"
         />
-        <Text style={{ color: 'white', fontSize: 28, fontFamily: 'jetbrains_mono_regular' }}>Re-Mixed</Text>
+        <Text style={{ color: 'white', fontSize: 28, fontFamily: FONTS.mono }}>Re-Mixed</Text>
       </View>
 
       {/* Action buttons */}

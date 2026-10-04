@@ -1,4 +1,5 @@
 import { StyleSheet, Platform } from 'react-native';
+import { FONTS } from './utils/fonts';
 
 // ─── Color Palette ────────────────────────────────────────────────────────────
 export const colors = {
@@ -62,8 +63,8 @@ export const typography = {
     bold:  'Inter_700Bold',
     black: 'Inter_900Black',
     mono:  Platform.select({ ios: 'Courier New', android: 'monospace', default: 'monospace' }),
-    // Load these via expo-font / useFonts before use:
-    kotra:  'KOTRA_BOLD-Bold',
+    // Built in on iOS; see utils/fonts.ts
+    kotra:  FONTS.display,
     kyobo:  'KyoboHand',
     pixel:  'PressStart2P_400Regular',
   },

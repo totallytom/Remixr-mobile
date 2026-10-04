@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
   Modal,
   TextInput,
@@ -10,6 +9,7 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
+import { Image } from 'expo-image';
 import {
   Play,
   MoreVertical,
@@ -150,7 +150,7 @@ const PlaylistCard: React.FC<PlaylistCardProps> = ({
           <Image
             source={{ uri: coverUri }}
             className="w-full h-full"
-            resizeMode="cover"
+            contentFit="cover"
           />
           {/* Track count badge */}
           <View className="absolute top-0.5 left-0.5 bg-black/70 px-1.5 py-0.5 rounded">

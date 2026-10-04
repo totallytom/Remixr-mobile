@@ -6,9 +6,9 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Image,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { OnboardingStackParamList } from '../../navigation/OnboardingStack';
@@ -70,7 +70,7 @@ const ProfilePreview: React.FC<{
                 <Image
                   source={{ uri: avatarPreview }}
                   className="w-full h-full"
-                  resizeMode="cover"
+                  contentFit="cover"
                 />
               ) : (
                 <View className="flex-1 items-center justify-center">
@@ -376,7 +376,7 @@ const Onboarding: React.FC = () => {
             style={{ flexShrink: 0 }}
           >
             {avatarUri ? (
-              <Image source={{ uri: avatarUri }} className="w-full h-full" resizeMode="cover" />
+              <Image source={{ uri: avatarUri }} className="w-full h-full" contentFit="cover" />
             ) : (
               <Mic2 size={24} color="#4b5563" />
             )}

@@ -5,7 +5,6 @@ import {
   Text as RNText,
   ScrollView,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   Modal,
   Linking,
@@ -13,6 +12,7 @@ import {
   Alert,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 import { colors } from '../../theme'
 

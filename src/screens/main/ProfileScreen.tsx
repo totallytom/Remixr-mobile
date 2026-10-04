@@ -5,7 +5,6 @@ import {
   Text as RNText,
   ScrollView,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   Modal,
   Alert,
@@ -14,6 +13,7 @@ import {
   Linking,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 import { colors } from '../../theme'
 
@@ -1384,7 +1384,7 @@ const Profile: React.FC = () => {
                     </Text>
                     {editForm.bannerUrl ? (
                       <View className="gap-2">
-                        <Image source={{ uri: editForm.bannerUrl }} style={{ width: '100%', height: 80, borderRadius: 8 }} resizeMode="cover" />
+                        <Image source={{ uri: editForm.bannerUrl }} style={{ width: '100%', height: 80, borderRadius: 8 }} contentFit="cover" />
                         <TouchableOpacity onPress={handlePickBanner} disabled={isUploadingBanner}>
                           <Text className="text-primary-600 text-sm">{isUploadingBanner ? t('profile.uploading') : t('profile.changeBanner')}</Text>
                         </TouchableOpacity>

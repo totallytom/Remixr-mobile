@@ -40,7 +40,9 @@
     "shareMessage": "Re-Mixedで@{{username}}をチェックしよう！🎵",
     "shareMessageNoName": "Re-Mixedで私のプロフィールをチェックしよう！🎵",
     "topAlbumChart": "人気アルバムチャート",
-    "latestReleases": "最新リリース"
+    "latestReleases": "最新リリース",
+    "reduceMotionOn": "動きを減らす：オン",
+    "reduceMotionOff": "動きを減らす：オフ"
   },
   "settings": {
     "title": "設定",
@@ -60,7 +62,7 @@
     },
     "reduceMotion": {
       "title": "動きを減らす",
-      "description": "動くアニメーションを停止します：跳ね回るテレビのロゴ、流れるティッカー、カセットのリール、イコライザー。ここで変更するまでは、端末の「視差効果を減らす」設定に従います。"
+      "description": "動くアニメーションを止めます。TVの跳ねるロゴを非表示にし、流れるティッカー、カセットのリール、イコライザーを静止します。ここかホーム画面で変更するまでは、端末の「視差効果を減らす」設定に従います。"
     },
     "showPassword": "パスワードを表示",
     "hidePassword": "パスワードを隠す",
@@ -560,7 +562,13 @@
     "shareMessageNoArtist": "「{{title}}」を聴いてみて",
     "showHint": "ミュージックプレーヤーを表示します",
     "pillNowPlaying": "{{artist}}の{{title}}、再生中",
-    "pillPaused": "{{artist}}の{{title}}、一時停止中"
+    "pillPaused": "{{artist}}の{{title}}、一時停止中",
+    "seek": "再生位置",
+    "scrubFull": "高速スクラブ",
+    "scrubHalf": "1/2速スクラブ",
+    "scrubQuarter": "1/4速スクラブ",
+    "scrubFine": "微調整スクラブ",
+    "queueTitle": "キュー（{{count}}）"
   },
   "discover": {
     "title": "スワイプで発見",
@@ -659,7 +667,8 @@
     "playsWeek_other": "今週{{count}}回再生",
     "emptyTop": "いいねされたトラックはまだありません。最初のいいねをしてみましょう！",
     "emptyWeekly": "今週のデータはまだありません。音楽を聴くとランキングに反映されます！",
-    "title": "チャート"
+    "title": "チャート",
+    "subtitle": "歴代の人気曲と今週の再生ランキング"
   },
   "album": {
     "loading": "アルバムを読み込み中…",
@@ -1442,5 +1451,13 @@
     "emptyTitle": "まだ何もありません",
     "emptyBody": "アーティストがアップロードすると、新しいトラックがここに表示されます。",
     "dropped": "トラックをリリース · {{time}}"
+  },
+  "promo": {
+    "title": "Amulet Studiosのほかのアプリ",
+    "subtitle": "Re-Mixed開発チームの無料ゲーム",
+    "floodlingsTagline": "盤面を塗りつぶして時間内にクリア — スピード色パズル",
+    "blockysBlitzTagline": "60秒で遊べる脳トレゲーム13種",
+    "get": "入手",
+    "openA11y": "App Storeで{{name}}を開く"
   }
 }

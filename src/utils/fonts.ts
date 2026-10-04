@@ -1,18 +1,27 @@
-import { Text } from 'react-native';
+import { Platform, Text } from 'react-native';
+
+/**
+ * On iOS the fonts are compiled into the app (expo-font plugin in app.json) and
+ * referenced by their PostScript names, so nothing loads at launch. Elsewhere
+ * they load at runtime under the file-style names below.
+ */
+export const EMBEDDED_FONTS = Platform.OS === 'ios';
+const pick = (ios: string, other: string) => (EMBEDDED_FONTS ? ios : other);
 
 export const FONTS = {
-  body: 'MaruMinyaHangul',
-  mono: 'jetbrains_mono_regular',
+  body: pick('x12y12pxMaruMinyaHangul', 'MaruMinyaHangul'),
+  mono: pick('JetBrainsMono-Regular', 'jetbrains_mono_regular'),
   // Website-matching faces for the neo-brutalist screens (Settings, playlists).
   // Custom fonts have a single weight, so bold text must pick a bold file —
   // `fontWeight` alone is ignored on iOS.
-  display: 'KOTRA_BOLD',      // the website's `font-kotra` headline face
-  bold: 'inter_bold',
-  semibold: 'inter_semibold',
-  medium: 'inter_medium',
-} as const;
+  display: pick('KOTRA_BOLD-Bold', 'KOTRA_BOLD'),      // the website's `font-kotra` headline face
+  bold: pick('Inter24pt-Bold', 'inter_bold'),
+  semibold: pick('Inter24pt-SemiBold', 'inter_semibold'),
+  medium: pick('Inter24pt-Medium', 'inter_medium'),
+};
 
-export const FONT_SOURCES: Record<string, number> = {
+/** Runtime font loading — empty on iOS, where the fonts are built in. */
+export const FONT_SOURCES: Record<string, number> = EMBEDDED_FONTS ? {} : {
   [FONTS.body]: require('../../assets/fonts/MaruMinyaHangul.ttf'),
   [FONTS.mono]: require('../../assets/fonts/jetbrains_mono_regular.ttf'),
   [FONTS.display]: require('../../assets/fonts/KOTRA_BOLD-Bold.ttf'),

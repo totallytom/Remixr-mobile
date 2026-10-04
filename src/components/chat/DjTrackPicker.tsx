@@ -10,12 +10,12 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
-  Image,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Check, Music, Plus, Search, X } from 'lucide-react-native';
@@ -139,7 +139,7 @@ const DjTrackPicker: React.FC<Props> = ({ visible, onClose, onPick, queuedIds })
                     accessibilityLabel={queued ? t('chat.djInQueueA11y', { title: track.title }) : t('chat.djAddA11y', { title: track.title, artist: track.artist })}
                   >
                     {track.cover
-                      ? <Image source={{ uri: track.cover }} style={st.cover} resizeMode="cover" />
+                      ? <Image source={{ uri: track.cover }} style={st.cover} contentFit="cover" />
                       : <View style={[st.cover, st.coverFb]}><Music size={16} color={colors.textMuted} /></View>}
                     <View style={st.info}>
                       <Text style={st.trackTitle} numberOfLines={1}>{track.title}</Text>

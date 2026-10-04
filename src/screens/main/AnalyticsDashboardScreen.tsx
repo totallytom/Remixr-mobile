@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text as RNText, ScrollView, TouchableOpacity, Image, ActivityIndicator, type TextProps } from 'react-native';
+import { View, Text as RNText, ScrollView, TouchableOpacity, ActivityIndicator, type TextProps } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 import { colors } from '../../theme';
 import { useNavigation } from '@react-navigation/native';

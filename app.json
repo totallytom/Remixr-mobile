@@ -74,7 +74,11 @@
         {
           "fonts": [
             "./assets/fonts/MaruMinyaHangul.ttf",
-            "./assets/fonts/jetbrains_mono_regular.ttf"
+            "./assets/fonts/jetbrains_mono_regular.ttf",
+            "./assets/fonts/KOTRA_BOLD-Bold.ttf",
+            "./assets/fonts/inter_bold.ttf",
+            "./assets/fonts/inter_semibold.ttf",
+            "./assets/fonts/inter_medium.ttf"
           ]
         }
       ],

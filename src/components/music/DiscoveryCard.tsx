@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import LicenseBadge from './LicenseBadge';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Animated, PanResponder } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, PanResponder } from 'react-native';
+import { Image } from 'expo-image';
 import type { AudioPlayer } from 'expo-audio';
 import { createPreviewPlayer, releasePlayer, waitUntilLoaded } from '../../services/audio';
 import { Play, Pause, Star, Mic } from 'lucide-react-native';
@@ -215,7 +216,7 @@ const DiscoveryCardComponent: React.FC<DiscoveryCardProps> = ({
           <Image
             source={{ uri: artwork }}
             style={StyleSheet.absoluteFill}
-            resizeMode="cover"
+            contentFit="cover"
           />
         ) : (
           <View style={styles.artworkFallback}>

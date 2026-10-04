@@ -6,11 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Image,
   ActivityIndicator,
   Alert,
   Animated,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
@@ -572,7 +572,7 @@ const OnboardingUpload: React.FC = () => {
               </TouchableOpacity>
             ) : (
               <View className="flex-row items-center gap-3">
-                <Image source={{ uri: cover.uri }} className="w-14 h-14 rounded-lg" resizeMode="cover" />
+                <Image source={{ uri: cover.uri }} className="w-14 h-14 rounded-lg" contentFit="cover" />
                 <View className="flex-1 min-w-0">
                   <Text className="text-sm text-white" numberOfLines={1}>{cover.name}</Text>
                   <TouchableOpacity onPress={() => setCover(null)} activeOpacity={0.7}>

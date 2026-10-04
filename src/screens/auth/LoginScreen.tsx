@@ -10,10 +10,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Image,
   Animated,
   StyleSheet,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -205,7 +205,7 @@ const LoginScreen: React.FC = () => {
                 <Image
                   source={require('../../../assets/logo.png')}
                   style={styles.logo}
-                  resizeMode="cover"
+                  contentFit="cover"
                 />
               </Animated.View>
               <Text style={styles.appTitle}>Re-Mixed</Text>

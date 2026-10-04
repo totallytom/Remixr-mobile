@@ -5,7 +5,6 @@ import {
   Text as RNText,
   ScrollView,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   Alert,
   TextInput,
@@ -14,6 +13,7 @@ import {
   Linking,
   type TextProps,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 import { colors } from '../../theme';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -551,7 +551,7 @@ const AdminScreen: React.FC = () => {
                   <Image
                     source={{ uri: track.cover || DEFAULT_COVER }}
                     style={{ width: 48, height: 48, borderRadius: 8, flexShrink: 0 }}
-                    resizeMode="cover"
+                    contentFit="cover"
                   />
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text

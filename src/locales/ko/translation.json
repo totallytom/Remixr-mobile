@@ -40,7 +40,9 @@
     "shareMessage": "Re-Mixed에서 @{{username}}님을 만나보세요! 🎵",
     "shareMessageNoName": "Re-Mixed에서 제 프로필을 확인해 보세요! 🎵",
     "topAlbumChart": "인기 앨범 차트",
-    "latestReleases": "최근 발매한 앨범"
+    "latestReleases": "최근 발매한 앨범",
+    "reduceMotionOn": "동작 줄이기: 켬",
+    "reduceMotionOff": "동작 줄이기: 끔"
   },
   "settings": {
     "title": "설정",
@@ -60,7 +62,7 @@
     },
     "reduceMotion": {
       "title": "동작 줄이기",
-      "description": "움직이는 애니메이션을 멈춥니다: 튀어 다니는 TV 로고, 흐르는 전광판, 카세트 릴, 이퀄라이저. 여기서 바꾸기 전까지는 기기의 '동작 줄이기' 설정을 따릅니다."
+      "description": "움직이는 애니메이션을 멈춥니다: TV의 튀는 로고를 숨기고 흐르는 전광판, 카세트 릴, 이퀄라이저를 정지합니다. 여기나 홈 화면에서 변경하기 전까지는 기기의 동작 줄이기 설정을 따릅니다."
     },
     "showPassword": "비밀번호 보기",
     "hidePassword": "비밀번호 숨기기",
@@ -560,7 +562,13 @@
     "shareMessageNoArtist": "\"{{title}}\" 들어보세요",
     "showHint": "음악 플레이어를 표시합니다",
     "pillNowPlaying": "{{artist}}의 {{title}}, 재생 중",
-    "pillPaused": "{{artist}}의 {{title}}, 일시정지됨"
+    "pillPaused": "{{artist}}의 {{title}}, 일시정지됨",
+    "seek": "재생 위치",
+    "scrubFull": "빠른 탐색",
+    "scrubHalf": "1/2 속도 탐색",
+    "scrubQuarter": "1/4 속도 탐색",
+    "scrubFine": "미세 탐색",
+    "queueTitle": "대기열 ({{count}})"
   },
   "discover": {
     "title": "스와이프로 발견하기",
@@ -659,7 +667,8 @@
     "playsWeek_other": "이번 주 {{count}}회 재생",
     "emptyTop": "아직 좋아요를 받은 트랙이 없어요. 첫 번째로 좋아요를 눌러 보세요!",
     "emptyWeekly": "아직 이번 주 데이터가 없어요. 음악을 들으면 순위가 매겨져요!",
-    "title": "차트"
+    "title": "차트",
+    "subtitle": "역대 인기곡과 이번 주 재생 순위"
   },
   "album": {
     "loading": "앨범을 불러오는 중…",
@@ -1442,5 +1451,13 @@
     "emptyTitle": "아직 아무것도 없어요",
     "emptyBody": "아티스트가 업로드하면 새 트랙이 여기에 표시돼요.",
     "dropped": "트랙을 발매했어요 · {{time}}"
+  },
+  "promo": {
+    "title": "Amulet Studios의 다른 앱",
+    "subtitle": "Re-Mixed 제작팀이 만든 무료 게임",
+    "floodlingsTagline": "보드를 색으로 채우고 시간을 이겨라 — 빠른 컬러 퍼즐",
+    "blockysBlitzTagline": "60초 두뇌 게임 13종",
+    "get": "받기",
+    "openA11y": "App Store에서 {{name}} 열기"
   }
 }
