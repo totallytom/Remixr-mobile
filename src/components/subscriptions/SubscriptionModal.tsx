@@ -60,6 +60,22 @@ const ARTIST_PERKS = [
 // identifier or underlying product identifier should contain "fan" or "artist"
 // (e.g. "artist_monthly", "fan_annual") — set products up that way in the
 // RevenueCat/App Store Connect/Play Console dashboards, or this can't tell them apart.
+/** The ISO 8601 billing period from the store, as a package-type key. */
+const PERIOD_FROM_ISO: Record<string, string> = {
+  P1W: 'WEEKLY', P7D: 'WEEKLY', P1M: 'MONTHLY', P2M: 'TWO_MONTH',
+  P3M: 'THREE_MONTH', P6M: 'SIX_MONTH', P1Y: 'ANNUAL', P12M: 'ANNUAL',
+};
+
+/**
+ * Billing period of a package. Packages with custom identifiers (e.g.
+ * "com.sypher.mobile.artist_monthly") come back as type CUSTOM, so fall back to
+ * the product's own subscription period from the App Store.
+ */
+function periodOf(pkg: PurchasesPackage): string {
+  if (pkg.packageType && pkg.packageType !== 'CUSTOM' && pkg.packageType !== 'UNKNOWN') return pkg.packageType;
+  return PERIOD_FROM_ISO[pkg.product.subscriptionPeriod ?? ''] ?? pkg.packageType;
+}
+
 function tierOfPackage(pkg: PurchasesPackage): 'fan' | 'artist' | null {
   const id = `${pkg.identifier} ${pkg.product.identifier}`.toLowerCase();
   if (id.includes('artist')) return 'artist';
@@ -119,7 +135,7 @@ const TierCard: React.FC<{
             <View className="flex-row gap-2">
               {packages.map((pkg) => {
                 const active = selected?.identifier === pkg.identifier;
-                const label = periodLabel(pkg.packageType);
+                const label = periodLabel(periodOf(pkg));
                 return (
                   <TouchableOpacity
                     key={pkg.identifier}
@@ -150,7 +166,7 @@ const TierCard: React.FC<{
             ) : (
               <Text className="font-semibold text-black">
                 {selected
-                  ? t('subscription.subscribeWithPrice', { price: selected.product.priceString, period: periodLabel(selected.packageType) })
+                  ? t('subscription.subscribeWithPrice', { price: selected.product.priceString, period: periodLabel(periodOf(selected)) })
                   : t('subscription.subscribe')}
               </Text>
             )}
@@ -179,8 +195,13 @@ const SubscriptionModal: React.FC<Props> = ({ visible, onClose }) => {
       const [current, info] = await Promise.all([getOfferings(), getCustomerInfo()]);
       setOffering(current);
       setActiveSub(getActiveSubscription(info));
-    } catch (e) {
-      setLoadError(t('subscription.loadFailed'));
+    } catch (e: any) {
+      // RevenueCat explains why (no products from App Store Connect, missing key…).
+      const reason = [e?.code, e?.message, e?.underlyingErrorMessage].filter(Boolean).join(' · ');
+      console.warn('[subscriptions] could not load offerings:', reason);
+      setLoadError(__DEV__ && reason ? `${t('subscription.loadFailed')}
+
+${reason}` : t('subscription.loadFailed'));
     } finally {
       setIsLoading(false);
     }

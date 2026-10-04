@@ -8,7 +8,9 @@ import {
   StyleSheet,
   ActivityIndicator,
   type TextProps,
+  Platform,
 } from 'react-native';
+import { SITE_URL } from '../../utils/shareLinks';
 import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 
@@ -139,10 +141,14 @@ const MusicPlayerModal: React.FC<MusicPlayerModalProps> = ({ track, isOpen, onCl
   const handleShare = useCallback(async () => {
     if (!track) return;
     try {
-      await Share.share({
-        title: track.title,
-        message: track.artist ? i18n.t('player.shareMessage', { title: track.title, artist: track.artist }) : i18n.t('player.shareMessageNoArtist', { title: track.title }),
-      });
+      const text = track.artist ? i18n.t('player.shareMessage', { title: track.title, artist: track.artist }) : i18n.t('player.shareMessageNoArtist', { title: track.title });
+      // Tracks have no page of their own on the site yet, so link the home page (logo preview).
+      await Share.share(
+        Platform.OS === 'ios'
+          ? { title: track.title, message: `${text} on Re-Mixed`, url: SITE_URL }
+          : { title: track.title, message: `${text} on Re-Mixed
+${SITE_URL}` },
+      );
     } catch {
       // user cancelled or share unavailable
     }

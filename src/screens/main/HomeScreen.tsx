@@ -15,6 +15,7 @@ import {
   AppState,
   type TextProps,
 } from 'react-native';
+import { profileShareUrl, SITE_URL } from '../../utils/shareLinks';
 import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 import { colors } from '../../theme'
@@ -525,11 +526,13 @@ const Home: React.FC = () => {
             onPress={async () => {
               if (!requireAuth('profile')) return;
               try {
-                await Share.share({
-                  message: user?.username
-                    ? t('home.shareMessage', { username: user.username })
-                    : t('home.shareMessageNoName'),
-                });
+                const url = user ? profileShareUrl(user as any) : SITE_URL;
+                const text = user?.username
+                  ? t('home.shareMessage', { username: user.username })
+                  : t('home.shareMessageNoName');
+                // `url` gives iOS a link preview; Android only reads `message`.
+                await Share.share(Platform.OS === 'ios' ? { message: text, url } : { message: `${text}
+${url}` });
               } catch {}
             }}
             activeOpacity={0.75}

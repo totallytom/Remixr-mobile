@@ -13,6 +13,7 @@ import {
   Linking,
   type TextProps,
 } from 'react-native';
+import { profileShareUrl } from '../../utils/shareLinks';
 import { Image } from 'expo-image';
 import { FONTS } from '../../utils/fonts';
 import { colors } from '../../theme'
@@ -313,10 +314,7 @@ const Profile: React.FC = () => {
 
   const handleShareProfile = useCallback(async () => {
     if (!currentUser) return;
-    const vanity = (currentUser as any).vanityUrl;
-    const url = vanity
-      ? `https://www.re-mixed.net/@${vanity}`
-      : `https://www.re-mixed.net/profile/${encodeURIComponent(currentUser.username?.trim() || currentUser.id)}`;
+    const url = profileShareUrl(currentUser as any);
     try {
       await Share.share({ message: url, url });
       setProfileLinkCopied(true);
